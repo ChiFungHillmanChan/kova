@@ -117,7 +117,11 @@ cmd_start() {
     exit 1
   fi
 
-  local loop_cmd="bash \"$PROJECT_ROOT/.claude/hooks/kova-loop.sh\" $*"
+  local loop_cmd
+  loop_cmd="bash $(printf '%q' "$PROJECT_ROOT/.claude/hooks/kova-loop.sh")"
+  for arg in "$@"; do
+    loop_cmd+=" $(printf '%q' "$arg")"
+  done
   local script_path
   script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
   local dashboard_cmd="bash \"$script_path\" dashboard"

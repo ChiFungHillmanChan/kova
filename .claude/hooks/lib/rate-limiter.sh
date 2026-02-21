@@ -40,6 +40,7 @@ rate_limit_check() {
 
   # Prune timestamps older than 1 hour and count remaining
   local tmp_file="${_RATE_LIMIT_STATE_FILE}.tmp"
+  : > "$tmp_file"
   local count=0
   local oldest_in_window=""
 
@@ -96,7 +97,7 @@ detect_api_limit() {
   if [ ! -f "$output_file" ]; then
     return 1
   fi
-  if grep -qi "rate limit\|too many requests\|try again\|429\|rate_limit_error\|overloaded" "$output_file" 2>/dev/null; then
+  if grep -qi "rate limit\|too many requests\|error.*429\|status.*429\|http.*429\|rate_limit_error\|overloaded" "$output_file" 2>/dev/null; then
     return 0
   fi
   return 1

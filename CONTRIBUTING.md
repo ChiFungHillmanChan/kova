@@ -10,7 +10,7 @@ Kova uses [Bats](https://github.com/bats-core/bats-core) for shell testing. **Al
 # Install test dependencies (one time)
 npm install
 
-# Run full suite (112 tests)
+# Run full suite (178 tests)
 npm test
 
 # Run individual suites
@@ -68,7 +68,7 @@ Slash commands are Markdown files in `.claude/commands/`.
 ## PR Expectations
 
 - [ ] `npm run lint` — all shell scripts pass `shellcheck` with no warnings
-- [ ] `npm test` — all 112+ tests pass (unit, integration, regression)
+- [ ] `npm test` — all 178 tests pass (unit, integration, regression)
 - [ ] Regression suite confirms hook-name consistency
 - [ ] Tested with at least one language/ecosystem
 - [ ] `README.md` updated if adding new language support or hooks

@@ -15,7 +15,7 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
       - name: Lint all shell scripts
-        run: shellcheck -x -S warning kova install.sh .claude/hooks/*.sh .claude/hooks/lib/*.sh
+        run: shellcheck -x -S warning kova kova-monitor install.sh .claude/hooks/*.sh .claude/hooks/lib/*.sh
 
   test:
     name: Bats Tests

@@ -238,6 +238,7 @@ main() {
             completed_context="$completed_context\n- [x] $item_text"
             current_item=$((current_item + 1)); fix_attempts=0; mode="implement"
             consecutive_stuck_items=0
+            no_progress_count=0
           fi ;;
         HIGH|ERROR)
           echo "  Review: $REVIEW_RESULT — needs attention." >&2

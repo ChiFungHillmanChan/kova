@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Shell](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Compatible-blueviolet.svg)](https://docs.anthropic.com/en/docs/claude-code)
-[![Tests](https://img.shields.io/badge/Tests-177%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-178%20passing-brightgreen.svg)](#testing)
 [![Languages](https://img.shields.io/badge/Languages-EN%20%7C%20%E7%B2%B5%E8%AA%9E%20%7C%20%E4%B8%AD%E6%96%87-orange.svg)](#documentation)
 
 > Autonomous engineering protocol for Claude Code: safe by default, verified before stop, and built to ship.
@@ -18,7 +18,7 @@
 - **Circuit breaker** for stuck or no-progress loops with clear failure reports
 - **tmux dashboard** via `kova-monitor` (`start`, `attach`, `status`, `dashboard`, `stop`)
 - **Global install + setup wizard** (`install.sh --global`, `kova setup`)
-- **177 automated tests passing** (unit + integration + regression)
+- **178 automated tests passing** (unit + integration + regression)
 - **CI on Linux and macOS** with ShellCheck + Bats
 
 See [RELEASE_NOTES.md](RELEASE_NOTES.md) for upgrade notes and details.
@@ -191,6 +191,7 @@ kova/
 ├── .gitignore
 ├── install.sh             # Installer script
 ├── kova                   # CLI script (zero-token commands)
+├── kova-monitor           # tmux dashboard for Team Loop
 ├── .claude/
 │   ├── settings.json      # Hook config + permissions
 │   ├── hooks/
@@ -205,7 +206,9 @@ kova/
 │   │       ├── parse-prd.sh        # PRD parser
 │   │       ├── parse-failures.sh   # Failure parser
 │   │       ├── generate-prompt.sh  # Prompt generator
-│   │       └── run-code-review.sh  # Code review orchestrator
+│   │       ├── run-code-review.sh  # Code review orchestrator
+│   │       ├── rate-limiter.sh    # Rate limiting for API calls
+│   │       └── circuit-breaker.sh # Circuit breaker for stuck loops
 │   └── commands/
 │       ├── plan.md              # /plan
 │       ├── verify-app.md        # /verify-app
@@ -327,7 +330,7 @@ Full guides available in three languages:
 
 ## Testing
 
-Kova includes **177 automated tests** across three suites. See [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
+Kova includes **178 automated tests** across three suites. See [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
 
 ```bash
 npm install              # Install test dependencies
@@ -337,7 +340,7 @@ npm run lint             # ShellCheck all shell scripts
 
 | Suite | Tests | What it covers |
 |-------|-------|----------------|
-| Unit | 107 | parser/detector libs, rate limiter, circuit breaker, monitor behaviors |
+| Unit | 108 | parser/detector libs, rate limiter, circuit breaker, monitor behaviors |
 | Integration | 63 | install, activate/deactivate, status, monitor, global install workflows |
 | Regression | 7 | Hook-name consistency across kova/install/settings |
 

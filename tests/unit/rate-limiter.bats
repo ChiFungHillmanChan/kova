@@ -147,14 +147,19 @@ teardown() {
   detect_api_limit output.log
 }
 
-@test "detect_api_limit: detects 'try again' in output" {
+@test "detect_api_limit: does not match generic 'try again' in output" {
   echo "Please try again later" > output.log
+  ! detect_api_limit output.log
+}
+
+@test "detect_api_limit: detects 'error 429' in output" {
+  echo "error 429: rate limited" > output.log
   detect_api_limit output.log
 }
 
-@test "detect_api_limit: detects '429' in output" {
-  echo "Error 429" > output.log
-  detect_api_limit output.log
+@test "detect_api_limit: does not match bare '429' in output" {
+  echo "Found 429 lines of code" > output.log
+  ! detect_api_limit output.log
 }
 
 @test "detect_api_limit: detects 'rate_limit_error' in output" {
