@@ -1,0 +1,18 @@
+{
+  "name": "kova",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Autonomous engineering protocol for Claude Code",
+  "scripts": {
+    "test": "bats tests/unit tests/integration tests/regression",
+    "test:unit": "bats tests/unit",
+    "test:integration": "bats tests/integration",
+    "test:regression": "bats tests/regression",
+    "lint": "shellcheck -x --severity=warning kova kova-monitor install.sh .claude/hooks/*.sh .claude/hooks/lib/*.sh"
+  },
+  "devDependencies": {
+    "bats": "^1.11.0",
+    "bats-support": "^0.3.0",
+    "bats-assert": "^2.2.0"
+  }
+}

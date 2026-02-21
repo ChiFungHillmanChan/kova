@@ -1,0 +1,337 @@
+#!/bin/bash
+# kova-monitor — tmux-based dashboard for Kova Smart Loop
+# Usage: kova-monitor start <prd> [options]
+#        kova-monitor attach
+#        kova-monitor stop
+#        kova-monitor status
+#        kova-monitor dashboard  (internal — runs in right pane)
+
+set -e
+
+SESSION_NAME="kova-monitor"
+STATE_DIR=".kova-loop"
+
+# Colors (disable if not a terminal)
+if [ -t 1 ]; then
+  BOLD='\033[1m'
+  GREEN='\033[0;32m'
+  YELLOW='\033[0;33m'
+  RED='\033[0;31m'
+  CYAN='\033[0;36m'
+  DIM='\033[0;2m'
+  RESET='\033[0m'
+else
+  BOLD='' GREEN='' YELLOW='' RED='' CYAN='' DIM='' RESET=''
+fi
+
+# Find project root (walk up until .claude/ or .git found)
+find_project_root() {
+  local dir="$PWD"
+  while [ "$dir" != "/" ]; do
+    if [ -d "$dir/.claude" ] || [ -d "$dir/.git" ]; then
+      echo "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  echo "$PWD"
+}
+
+PROJECT_ROOT="$(find_project_root)"
+
+# ─────────────────────────────────────────────
+# kova-monitor help
+# ─────────────────────────────────────────────
+cmd_help() {
+  cat <<'HELP'
+═══════════════════════════════════════════════
+ KOVA MONITOR — tmux Dashboard
+═══════════════════════════════════════════════
+
+ COMMANDS
+ ─────────────────────────────────────────────
+  kova-monitor start <prd> [opts]  Start loop + dashboard
+  kova-monitor attach              Attach to running session
+  kova-monitor stop                Stop loop + dashboard
+  kova-monitor status              Check if session is running
+
+ OPTIONS (passed to kova-loop.sh)
+ ─────────────────────────────────────────────
+  --max-iterations N       Max loop iterations (default 20)
+  --max-fix-attempts N     Max fix attempts per item (default 5)
+  --no-commit              Skip git commits
+  --dry-run                Preview only
+
+ DASHBOARD DISPLAY
+ ─────────────────────────────────────────────
+  Left pane:   Loop output (kova-loop.sh)
+  Right pane:  Live dashboard (refreshes every 2s)
+
+  Dashboard shows:
+    - Current iteration / item
+    - Rate limit status
+    - Circuit breaker status
+    - Last 5 lines of ITERATION_LOG.md
+    - Latest verify gate results
+
+ REQUIREMENTS
+ ─────────────────────────────────────────────
+  tmux — brew install tmux (macOS) / apt install tmux (Linux)
+
+═══════════════════════════════════════════════
+HELP
+}
+
+# ─────────────────────────────────────────────
+# kova-monitor start
+# ─────────────────────────────────────────────
+cmd_start() {
+  if [ $# -lt 1 ]; then
+    echo -e "${RED}Error: PRD file required.${RESET}" >&2
+    echo "Usage: kova-monitor start <prd-file> [options]" >&2
+    exit 1
+  fi
+
+  if ! command -v tmux &>/dev/null; then
+    echo -e "${RED}Error: tmux is not installed.${RESET}" >&2
+    echo "" >&2
+    echo "Install tmux:" >&2
+    echo "  macOS:  brew install tmux" >&2
+    echo "  Ubuntu: sudo apt-get install tmux" >&2
+    echo "  Fedora: sudo dnf install tmux" >&2
+    echo "" >&2
+    echo "Or run the loop directly:" >&2
+    echo "  bash .claude/hooks/kova-loop.sh $*" >&2
+    exit 1
+  fi
+
+  local prd_file="$1"
+  if [ ! -f "$prd_file" ]; then
+    echo -e "${RED}Error: PRD file not found: $prd_file${RESET}" >&2
+    exit 1
+  fi
+
+  # Check for existing session
+  if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    echo -e "${YELLOW}Session '$SESSION_NAME' already running. Use 'kova-monitor attach' or 'kova-monitor stop'.${RESET}" >&2
+    exit 1
+  fi
+
+  local loop_cmd="bash \"$PROJECT_ROOT/.claude/hooks/kova-loop.sh\" $*"
+  local script_path
+  script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+  local dashboard_cmd="bash \"$script_path\" dashboard"
+
+  # Create tmux session with loop in left pane
+  tmux new-session -d -s "$SESSION_NAME" -c "$PROJECT_ROOT" "$loop_cmd"
+
+  # Split vertically for dashboard in right pane (30% width)
+  tmux split-window -h -t "$SESSION_NAME" -p 30 -c "$PROJECT_ROOT" "$dashboard_cmd"
+
+  # Select left pane (loop output)
+  tmux select-pane -t "$SESSION_NAME:0.0"
+
+  echo -e "${GREEN}Kova Monitor started!${RESET}"
+  echo ""
+  echo "  Session: $SESSION_NAME"
+  echo "  PRD:     $prd_file"
+  echo ""
+  echo "  Attach:  kova-monitor attach"
+  echo "  Stop:    kova-monitor stop"
+  echo ""
+
+  # Auto-attach
+  tmux attach-session -t "$SESSION_NAME"
+}
+
+# ─────────────────────────────────────────────
+# kova-monitor attach
+# ─────────────────────────────────────────────
+cmd_attach() {
+  if ! command -v tmux &>/dev/null; then
+    echo -e "${RED}Error: tmux is not installed.${RESET}" >&2
+    exit 1
+  fi
+
+  if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    echo -e "${YELLOW}No active kova-monitor session found.${RESET}" >&2
+    echo "Start one: kova-monitor start <prd-file>" >&2
+    exit 1
+  fi
+
+  tmux attach-session -t "$SESSION_NAME"
+}
+
+# ─────────────────────────────────────────────
+# kova-monitor stop
+# ─────────────────────────────────────────────
+cmd_stop() {
+  if ! command -v tmux &>/dev/null; then
+    echo -e "${RED}Error: tmux is not installed.${RESET}" >&2
+    exit 1
+  fi
+
+  if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    echo -e "${YELLOW}No active kova-monitor session found.${RESET}" >&2
+    exit 0
+  fi
+
+  tmux kill-session -t "$SESSION_NAME"
+  echo -e "${GREEN}Kova Monitor stopped.${RESET}"
+}
+
+# ─────────────────────────────────────────────
+# kova-monitor status
+# ─────────────────────────────────────────────
+cmd_status() {
+  if ! command -v tmux &>/dev/null; then
+    echo -e "  Monitor: ${DIM}tmux not installed${RESET}"
+    return 0
+  fi
+
+  if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    echo -e "  Monitor: ${GREEN}running${RESET} (session: $SESSION_NAME)"
+    echo "  Attach:  kova-monitor attach"
+  else
+    echo -e "  Monitor: ${DIM}not running${RESET}"
+  fi
+}
+
+# ─────────────────────────────────────────────
+# kova-monitor dashboard (internal — runs in right pane)
+# ─────────────────────────────────────────────
+cmd_dashboard() {
+  while true; do
+    clear
+
+    echo -e "${BOLD}╔══════════════════════════════════════╗${RESET}"
+    echo -e "${BOLD}║  KOVA DASHBOARD                      ║${RESET}"
+    echo -e "${BOLD}╚══════════════════════════════════════╝${RESET}"
+    echo ""
+
+    # Progress
+    if [ -f "$STATE_DIR/LOOP_PROGRESS.md" ]; then
+      echo -e "${CYAN}▸ Progress${RESET}"
+      # Extract stats line
+      local stats_line
+      stats_line=$(grep "^Stats:" "$STATE_DIR/LOOP_PROGRESS.md" 2>/dev/null || echo "  No data yet")
+      echo "  $stats_line"
+      echo ""
+
+      # Show item status
+      grep -E "^\- \[" "$STATE_DIR/LOOP_PROGRESS.md" 2>/dev/null | tail -8
+      echo ""
+    else
+      echo -e "${DIM}  Waiting for loop to start...${RESET}"
+      echo ""
+    fi
+
+    # Rate limit status
+    echo -e "${CYAN}▸ Rate Limit${RESET}"
+    if [ -f "$STATE_DIR/.rate_limit_state" ]; then
+      local now cutoff count max_per_hour
+      now=$(date +%s)
+      cutoff=$((now - 3600))
+      count=0
+      while IFS= read -r ts; do
+        [ -z "$ts" ] && continue
+        if [ "$ts" -gt "$cutoff" ] 2>/dev/null; then
+          count=$((count + 1))
+        fi
+      done < "$STATE_DIR/.rate_limit_state"
+      max_per_hour="${MAX_INVOCATIONS_PER_HOUR:-100}"
+      local pct=$((count * 100 / max_per_hour))
+      if [ "$pct" -ge 90 ]; then
+        echo -e "  ${RED}$count / $max_per_hour per hour ($pct%)${RESET}"
+      elif [ "$pct" -ge 70 ]; then
+        echo -e "  ${YELLOW}$count / $max_per_hour per hour ($pct%)${RESET}"
+      else
+        echo -e "  ${GREEN}$count / $max_per_hour per hour ($pct%)${RESET}"
+      fi
+    else
+      echo -e "  ${DIM}No data${RESET}"
+    fi
+    echo ""
+
+    # Circuit breaker status
+    echo -e "${CYAN}▸ Circuit Breaker${RESET}"
+    if [ -f "$STATE_DIR/CIRCUIT_BREAKER.md" ]; then
+      echo -e "  ${RED}TRIPPED${RESET}"
+      grep "^\\*\\*Reason:\\*\\*" "$STATE_DIR/CIRCUIT_BREAKER.md" 2>/dev/null | sed 's/\*\*Reason:\*\* /  /'
+    else
+      echo -e "  ${GREEN}OK${RESET}"
+    fi
+    echo ""
+
+    # Stuck items
+    if [ -f "$STATE_DIR/STUCK_ITEMS.md" ]; then
+      local stuck_count
+      stuck_count=$(grep -c "## Stuck Item" "$STATE_DIR/STUCK_ITEMS.md" 2>/dev/null || echo "0")
+      if [ "$stuck_count" -gt 0 ]; then
+        echo -e "${CYAN}▸ Stuck Items${RESET}"
+        echo -e "  ${YELLOW}$stuck_count item(s) stuck${RESET}"
+        echo ""
+      fi
+    fi
+
+    # Last 5 lines of iteration log
+    echo -e "${CYAN}▸ Recent Activity${RESET}"
+    if [ -f "$STATE_DIR/ITERATION_LOG.md" ]; then
+      tail -8 "$STATE_DIR/ITERATION_LOG.md" 2>/dev/null | head -5
+    else
+      echo -e "  ${DIM}No iterations yet${RESET}"
+    fi
+    echo ""
+
+    # Latest verify results
+    echo -e "${CYAN}▸ Latest Verification${RESET}"
+    if [ -f "$STATE_DIR/verify-output-latest.log" ] && [ -s "$STATE_DIR/verify-output-latest.log" ]; then
+      tail -5 "$STATE_DIR/verify-output-latest.log" 2>/dev/null
+    else
+      echo -e "  ${DIM}No results yet${RESET}"
+    fi
+
+    echo ""
+    echo -e "${DIM}Refreshing every 2s... Ctrl+C to exit dashboard${RESET}"
+
+    sleep 2
+  done
+}
+
+# ─────────────────────────────────────────────
+# Main dispatch
+# ─────────────────────────────────────────────
+case "${1:-}" in
+  help|-h|--help|"")
+    cmd_help
+    ;;
+  start)
+    shift
+    cmd_start "$@"
+    ;;
+  attach)
+    cmd_attach
+    ;;
+  stop)
+    cmd_stop
+    ;;
+  status)
+    cmd_status
+    ;;
+  dashboard)
+    cmd_dashboard
+    ;;
+  *)
+    echo -e "${RED}Unknown command: $1${RESET}" >&2
+    echo "" >&2
+    echo "Usage: kova-monitor <command>" >&2
+    echo "" >&2
+    echo "Commands:" >&2
+    echo "  start <prd> [opts]  Start loop + dashboard" >&2
+    echo "  attach              Attach to session" >&2
+    echo "  stop                Stop session" >&2
+    echo "  status              Check session status" >&2
+    echo "  help                Show help" >&2
+    exit 1
+    ;;
+esac

@@ -1,0 +1,493 @@
+#!/bin/bash
+# kova — Kova Protocol CLI
+# Zero-token commands for help, status, activate, deactivate, install.
+# For LLM-powered commands, use Claude Code slash commands: /kova:loop, /kova:init
+#
+# Usage:
+#   kova help
+#   kova status
+#   kova activate
+#   kova deactivate
+#   kova install [--dry-run]
+
+set -e
+
+# Colors (disable if not a terminal)
+if [ -t 1 ]; then
+  BOLD='\033[1m'
+  GREEN='\033[0;32m'
+  YELLOW='\033[0;33m'
+  RED='\033[0;31m'
+  CYAN='\033[0;36m'
+  DIM='\033[0;2m'
+  RESET='\033[0m'
+else
+  BOLD='' GREEN='' YELLOW='' RED='' CYAN='' DIM='' RESET=''
+fi
+
+# Find project root (walk up until .claude/ or .git found)
+find_project_root() {
+  local dir="$PWD"
+  while [ "$dir" != "/" ]; do
+    if [ -d "$dir/.claude" ] || [ -d "$dir/.git" ]; then
+      echo "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  echo "$PWD"
+}
+
+PROJECT_ROOT="$(find_project_root)"
+SETTINGS_LOCAL="$PROJECT_ROOT/.claude/settings.local.json"
+SETTINGS="$PROJECT_ROOT/.claude/settings.json"
+
+# ─────────────────────────────────────────────
+# kova help
+# ─────────────────────────────────────────────
+cmd_help() {
+  cat <<'HELP'
+═══════════════════════════════════════════════
+ KOVA PROTOCOL — Quick Reference
+═══════════════════════════════════════════════
+
+ What is Kova?
+ An automation layer that gives Claude safety hooks,
+ verification gates, workflow commands, and auto-formatting.
+
+ CLI COMMANDS (zero tokens)
+ ─────────────────────────────────────────────
+  kova help          This help page
+  kova status        Check hooks, stack, commands
+  kova activate      Turn ON all automatic hooks
+  kova deactivate    Turn OFF all automatic hooks
+  kova install       Install Kova into current project
+  kova setup         Interactive setup wizard
+  kova monitor       tmux dashboard (delegates to kova-monitor)
+
+ SLASH COMMANDS (use inside Claude Code)
+ ─────────────────────────────────────────────
+  Workflow:
+    /plan [feature]    Plan before coding, wait for "go"
+    /commit-push-pr    Stage, commit, push, open draft PR
+    /verify-app        Full 10-layer QA sweep
+    /fix-and-verify    Autonomous bug fixing loop
+    /code-review       4 parallel reviewers + optional Codex
+    /simplify          Clean up code, keep behaviour
+    /daily-standup     Engineering report
+
+  Kova (LLM-powered):
+    /kova:init [name]  Scaffold a new PRD file
+    /kova:loop <prd>   Team Loop: 6-phase cycle per item
+
+  Reference (load on demand):
+    /core-rules        /typescript-rules   /error-handling
+    /security-rules    /code-cleanup       /style-guide
+    /troubleshooting   /techdebt           /worktree-workflow
+    /framework-rules
+
+ HOOKS (automatic when activated)
+ ─────────────────────────────────────────────
+  format.sh           Format on every file write
+  block-dangerous.sh  Block rm -rf, force push, DROP TABLE
+  protect-files.sh    Block edits to .env, .pem, secrets
+  verify-on-stop.sh   7-layer gate when Claude finishes
+  kova-loop.sh        Team Loop orchestration
+
+ SUPPORTED LANGUAGES
+ ─────────────────────────────────────────────
+  Node.js · Python · Go · Rust · Ruby · Java · .NET
+  (auto-detected from lockfiles and config files)
+
+═══════════════════════════════════════════════
+HELP
+}
+
+# ─────────────────────────────────────────────
+# kova status
+# ─────────────────────────────────────────────
+cmd_status() {
+  echo ""
+  echo -e "${BOLD}KOVA STATUS${RESET}"
+  echo "═══════════════════════════════════════"
+
+  # Detect stack
+  local stack=""
+  local pm="N/A"
+
+  if [ -f "$PROJECT_ROOT/package.json" ]; then
+    if [ -f "$PROJECT_ROOT/pnpm-lock.yaml" ]; then pm="pnpm"
+    elif [ -f "$PROJECT_ROOT/yarn.lock" ]; then pm="yarn"
+    elif [ -f "$PROJECT_ROOT/bun.lockb" ]; then pm="bun"
+    else pm="npm"
+    fi
+    stack="${stack}Node.js ($pm), "
+  fi
+  [ -f "$PROJECT_ROOT/pyproject.toml" ] || [ -f "$PROJECT_ROOT/requirements.txt" ] && stack="${stack}Python, "
+  [ -f "$PROJECT_ROOT/go.mod" ] && stack="${stack}Go, "
+  [ -f "$PROJECT_ROOT/Cargo.toml" ] && stack="${stack}Rust, "
+  [ -f "$PROJECT_ROOT/Gemfile" ] && stack="${stack}Ruby, "
+  [ -f "$PROJECT_ROOT/pom.xml" ] || [ -f "$PROJECT_ROOT/build.gradle" ] && stack="${stack}Java, "
+  ls "$PROJECT_ROOT"/*.csproj &>/dev/null 2>&1 || ls "$PROJECT_ROOT"/*.sln &>/dev/null 2>&1 && stack="${stack}.NET, "
+
+  stack="${stack%, }"
+  [ -z "$stack" ] && stack="none detected"
+
+  echo -e "  Stack:           ${GREEN}${stack}${RESET}"
+  echo -e "  Package manager: ${CYAN}${pm}${RESET}"
+
+  # Check hooks
+  local hooks_active=0
+  local settings_file=""
+
+  if [ -f "$SETTINGS_LOCAL" ]; then
+    settings_file="$SETTINGS_LOCAL"
+  elif [ -f "$SETTINGS" ]; then
+    settings_file="$SETTINGS"
+  fi
+
+  if [ -n "$settings_file" ] && command -v jq &>/dev/null; then
+    local has_hooks
+    has_hooks=$(jq 'has("hooks")' "$settings_file" 2>/dev/null || echo "false")
+    if [ "$has_hooks" = "true" ]; then
+      # Count hook arrays that exist
+      for event in PreToolUse PostToolUse Stop SessionStart; do
+        local count
+        count=$(jq ".hooks.${event} | length // 0" "$settings_file" 2>/dev/null || echo "0")
+        if [ "$count" != "0" ] && [ "$count" != "null" ]; then
+          hooks_active=$((hooks_active + count))
+        fi
+      done
+    fi
+  fi
+
+  if [ "$hooks_active" -gt 0 ]; then
+    echo -e "  Hooks:           ${GREEN}${hooks_active} configured${RESET}"
+  else
+    echo -e "  Hooks:           ${YELLOW}none active${RESET} (run: kova activate)"
+  fi
+
+  # Check hook scripts exist
+  local missing_hooks=0
+  for hook in format.sh block-dangerous.sh protect-files.sh verify-on-stop.sh kova-loop.sh; do
+    if [ ! -f "$PROJECT_ROOT/.claude/hooks/$hook" ]; then
+      missing_hooks=$((missing_hooks + 1))
+    fi
+  done
+
+  if [ "$missing_hooks" -gt 0 ]; then
+    echo -e "  Hook scripts:    ${RED}${missing_hooks} missing${RESET} (run: kova install)"
+  else
+    echo -e "  Hook scripts:    ${GREEN}all present${RESET}"
+  fi
+
+  # Check commands
+  local cmd_count=0
+  if [ -d "$PROJECT_ROOT/.claude/commands" ]; then
+    cmd_count=$(find "$PROJECT_ROOT/.claude/commands" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+  fi
+  echo -e "  Commands:        ${CYAN}${cmd_count} available${RESET}"
+
+  # Check shared lib
+  if [ -f "$PROJECT_ROOT/.claude/hooks/lib/detect-stack.sh" ]; then
+    echo -e "  Shared library:  ${GREEN}OK${RESET}"
+  else
+    echo -e "  Shared library:  ${RED}MISSING${RESET}"
+  fi
+
+  # Check Team Loop
+  if [ -f "$PROJECT_ROOT/.claude/commands/kova/loop.md" ]; then
+    echo -e "  Team Loop:       ${GREEN}available${RESET}"
+  else
+    echo -e "  Team Loop:       ${YELLOW}not installed${RESET}"
+  fi
+
+  # Check active loop
+  if [ -d "$PROJECT_ROOT/.kova-loop" ]; then
+    echo -e "  Active loop:     ${YELLOW}in progress${RESET} (.kova-loop/ exists)"
+  fi
+
+  # Check Codex
+  if command -v codex &>/dev/null; then
+    echo -e "  Codex CLI:       ${GREEN}installed${RESET} (multi-model review enabled)"
+  else
+    echo -e "  Codex CLI:       ${DIM}not installed (optional)${RESET}"
+  fi
+
+  # Check jq
+  if ! command -v jq &>/dev/null; then
+    echo ""
+    echo -e "  ${RED}WARNING: jq is not installed. Hooks require jq.${RESET}"
+    echo "  Install: brew install jq (macOS) / apt install jq (Linux)"
+  fi
+
+  echo "═══════════════════════════════════════"
+  echo ""
+}
+
+# ─────────────────────────────────────────────
+# kova activate
+# ─────────────────────────────────────────────
+cmd_activate() {
+  if ! command -v jq &>/dev/null; then
+    echo -e "${RED}Error: jq is required. Install: brew install jq${RESET}"
+    exit 1
+  fi
+
+  # Ensure settings file exists
+  if [ ! -f "$SETTINGS_LOCAL" ]; then
+    if [ -f "$SETTINGS" ]; then
+      cp "$SETTINGS" "$SETTINGS_LOCAL"
+    else
+      mkdir -p "$(dirname "$SETTINGS_LOCAL")"
+      echo '{}' > "$SETTINGS_LOCAL"
+    fi
+  fi
+
+  # Define hooks config — must reference only scripts installed by install.sh
+  local hooks_json
+  hooks_json=$(cat <<'HOOKS'
+{
+  "PreToolUse": [
+    {
+      "matcher": "Bash",
+      "hooks": [{"type": "command", "command": "cat | .claude/hooks/block-dangerous.sh", "timeout": 5}]
+    },
+    {
+      "matcher": "Write|Edit|MultiEdit",
+      "hooks": [{"type": "command", "command": "cat | .claude/hooks/protect-files.sh", "timeout": 5}]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "Write|Edit|MultiEdit",
+      "hooks": [{"type": "command", "command": "cat | .claude/hooks/format.sh", "timeout": 30}]
+    }
+  ],
+  "Stop": [
+    {
+      "matcher": "",
+      "hooks": [{"type": "command", "command": "cat | .claude/hooks/verify-on-stop.sh", "timeout": 60}]
+    }
+  ]
+}
+HOOKS
+)
+
+  # Merge hooks into settings (preserve everything else)
+  local updated
+  updated=$(jq --argjson hooks "$hooks_json" '.hooks = $hooks' "$SETTINGS_LOCAL")
+  echo "$updated" > "$SETTINGS_LOCAL"
+
+  echo ""
+  echo -e "${BOLD}KOVA ACTIVATED${RESET}"
+  echo "═══════════════════════════════════════"
+  echo -e "  ${GREEN}✓${RESET} block-dangerous   (PreToolUse)"
+  echo -e "  ${GREEN}✓${RESET} protect-files     (PreToolUse)"
+  echo -e "  ${GREEN}✓${RESET} format            (PostToolUse)"
+  echo -e "  ${GREEN}✓${RESET} verify-on-stop    (Stop)"
+  echo "═══════════════════════════════════════"
+  echo ""
+  echo "  Hooks take effect on NEXT Claude Code session."
+  echo "  Run: kova deactivate  to turn off."
+  echo ""
+}
+
+# ─────────────────────────────────────────────
+# kova deactivate
+# ─────────────────────────────────────────────
+cmd_deactivate() {
+  if ! command -v jq &>/dev/null; then
+    echo -e "${RED}Error: jq is required. Install: brew install jq${RESET}"
+    exit 1
+  fi
+
+  if [ ! -f "$SETTINGS_LOCAL" ]; then
+    echo -e "${YELLOW}No settings.local.json found. Hooks are already inactive.${RESET}"
+    exit 0
+  fi
+
+  # Remove hooks key, keep everything else
+  local updated
+  updated=$(jq 'del(.hooks)' "$SETTINGS_LOCAL")
+  echo "$updated" > "$SETTINGS_LOCAL"
+
+  echo ""
+  echo -e "${BOLD}KOVA DEACTIVATED${RESET}"
+  echo "═══════════════════════════════════════"
+  echo "  All automatic hooks disabled."
+  echo ""
+  echo "  Still available (on-demand):"
+  echo "    /kova:init         Scaffold a new PRD"
+  echo "    /kova:loop <prd>   Team Loop (6-phase cycle)"
+  echo "    /verify-app        Manual verification"
+  echo "    /plan              Plan before coding"
+  echo "    /commit-push-pr    Commit workflow"
+  echo "    /code-review       Code review"
+  echo "    /fix-and-verify    Bug fix loop"
+  echo "═══════════════════════════════════════"
+  echo ""
+  echo "  Run: kova activate  to turn hooks back on."
+  echo ""
+}
+
+# ─────────────────────────────────────────────
+# kova install
+# ─────────────────────────────────────────────
+cmd_install() {
+  # Find the kova source directory (where this script lives)
+  local SCRIPT_DIR
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+  # Check if install.sh exists alongside this script
+  if [ -f "$SCRIPT_DIR/install.sh" ]; then
+    bash "$SCRIPT_DIR/install.sh" "$@"
+  else
+    cat <<'INSTALL'
+
+  Install Kova into a Project
+  ═══════════════════════════════════════
+
+  Option 1: Kova Installer (recommended)
+    cd /path/to/your/project
+    bash /path/to/kova/install.sh
+
+  Preview first:
+    bash /path/to/kova/install.sh --dry-run
+
+  Option 2: Copy .claude/ directory
+    cp -r /path/to/kova/.claude/ /your/project/.claude/
+
+  Requirements:
+    jq     — brew install jq / apt install jq
+    gh     — brew install gh (optional, for PRs)
+    codex  — npm install -g @openai/codex (optional, for multi-model review)
+
+INSTALL
+  fi
+}
+
+# ─────────────────────────────────────────────
+# kova setup (interactive wizard)
+# ─────────────────────────────────────────────
+cmd_setup() {
+  echo ""
+  echo -e "${BOLD}KOVA SETUP WIZARD${RESET}"
+  echo "═══════════════════════════════════════"
+  echo ""
+
+  # Step 1: Detect project stack
+  echo -e "  ${CYAN}Step 1/4:${RESET} Detecting project stack..."
+  local stack=""
+  local pm="N/A"
+  if [ -f "$PROJECT_ROOT/package.json" ]; then
+    if [ -f "$PROJECT_ROOT/pnpm-lock.yaml" ]; then pm="pnpm"
+    elif [ -f "$PROJECT_ROOT/yarn.lock" ]; then pm="yarn"
+    elif [ -f "$PROJECT_ROOT/bun.lockb" ]; then pm="bun"
+    else pm="npm"
+    fi
+    stack="${stack}Node.js ($pm), "
+  fi
+  [ -f "$PROJECT_ROOT/pyproject.toml" ] || [ -f "$PROJECT_ROOT/requirements.txt" ] && stack="${stack}Python, "
+  [ -f "$PROJECT_ROOT/go.mod" ] && stack="${stack}Go, "
+  [ -f "$PROJECT_ROOT/Cargo.toml" ] && stack="${stack}Rust, "
+  [ -f "$PROJECT_ROOT/Gemfile" ] && stack="${stack}Ruby, "
+  [ -f "$PROJECT_ROOT/pom.xml" ] || [ -f "$PROJECT_ROOT/build.gradle" ] && stack="${stack}Java, "
+  ls "$PROJECT_ROOT"/*.csproj &>/dev/null 2>&1 || ls "$PROJECT_ROOT"/*.sln &>/dev/null 2>&1 && stack="${stack}.NET, "
+  stack="${stack%, }"
+  [ -z "$stack" ] && stack="none detected"
+  echo -e "  Stack: ${GREEN}${stack}${RESET}"
+  echo ""
+
+  # Step 2: Install hooks
+  echo -e "  ${CYAN}Step 2/4:${RESET} Installing hooks and commands..."
+  cmd_install
+  echo ""
+
+  # Step 3: Activate hooks
+  echo -e "  ${CYAN}Step 3/4:${RESET} Activating hooks..."
+  cmd_activate
+  echo ""
+
+  # Step 4: Show status
+  echo -e "  ${CYAN}Step 4/4:${RESET} Verifying setup..."
+  cmd_status
+
+  echo ""
+  echo -e "${GREEN}Setup complete!${RESET} Start a Claude Code session to use Kova."
+  echo ""
+}
+
+# ─────────────────────────────────────────────
+# kova monitor (delegates to kova-monitor)
+# ─────────────────────────────────────────────
+cmd_monitor() {
+  local SCRIPT_DIR
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+  # Look for kova-monitor in known locations
+  local monitor_script=""
+  if [ -f "$SCRIPT_DIR/kova-monitor" ]; then
+    monitor_script="$SCRIPT_DIR/kova-monitor"
+  elif [ -f "$PROJECT_ROOT/.claude/kova-monitor" ]; then
+    monitor_script="$PROJECT_ROOT/.claude/kova-monitor"
+  elif command -v kova-monitor &>/dev/null; then
+    monitor_script="kova-monitor"
+  fi
+
+  if [ -z "$monitor_script" ]; then
+    echo -e "${RED}Error: kova-monitor not found.${RESET}" >&2
+    echo "Run: kova install  to install all components." >&2
+    exit 1
+  fi
+
+  bash "$monitor_script" "$@"
+}
+
+# ─────────────────────────────────────────────
+# Main dispatch
+# ─────────────────────────────────────────────
+case "${1:-}" in
+  help|-h|--help|"")
+    cmd_help
+    ;;
+  status)
+    cmd_status
+    ;;
+  activate)
+    cmd_activate
+    ;;
+  deactivate)
+    cmd_deactivate
+    ;;
+  install)
+    shift
+    cmd_install "$@"
+    ;;
+  setup)
+    cmd_setup
+    ;;
+  monitor)
+    shift
+    cmd_monitor "$@"
+    ;;
+  *)
+    echo -e "${RED}Unknown command: $1${RESET}"
+    echo ""
+    echo "Usage: kova <command>"
+    echo ""
+    echo "Commands:"
+    echo "  help        Show help"
+    echo "  status      Check setup"
+    echo "  activate    Turn ON hooks"
+    echo "  deactivate  Turn OFF hooks"
+    echo "  install     Install into project"
+    echo "  setup       Interactive setup wizard"
+    echo "  monitor     tmux dashboard"
+    echo ""
+    echo "For LLM-powered commands, use Claude Code:"
+    echo "  /kova:init [name]   Scaffold a PRD"
+    echo "  /kova:loop <prd>    Run the Team Loop"
+    exit 1
+    ;;
+esac
