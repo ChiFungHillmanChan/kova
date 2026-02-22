@@ -126,6 +126,22 @@ Co-Authored-By: Claude <noreply@anthropic.com>" 2>/dev/null; then
   echo "Committed item $item_num: $hash" >&2
 }
 
+# Attempt Codex cross-model diagnosis if fix_attempts has reached the threshold.
+# Usage: _maybe_escalate_to_codex <context_file>
+# Reads from outer scope: fix_attempts, codex_threshold, STATE_DIR, iteration, current_item, mode
+_maybe_escalate_to_codex() {
+  local context_file="$1"
+  [ "$codex_threshold" -gt 0 ] && [ "$fix_attempts" -eq "$codex_threshold" ] || return 0
+  echo "  Escalating to Codex for cross-model diagnosis..." >&2
+  local codex_diag="$STATE_DIR/codex-diagnosis-latest.md"
+  if codex_diagnose "$context_file" "$codex_diag"; then
+    log_iteration "$iteration" "$current_item" "$mode" "CODEX_DIAGNOSE" "success"
+  else
+    rm -f "$codex_diag"
+    log_iteration "$iteration" "$current_item" "$mode" "CODEX_DIAGNOSE" "skipped"
+  fi
+}
+
 main() {
   parse_args "$@"
   detect_pm; detect_languages
@@ -156,6 +172,8 @@ main() {
   local consecutive_stuck_items=0
   local no_progress_count=0
   local last_diff_stat=""
+  local codex_threshold=$(( MAX_FIX_ATTEMPTS > 3 ? 3 : MAX_FIX_ATTEMPTS - 1 ))
+  [ "$codex_threshold" -lt 1 ] && codex_threshold=0
 
   while [ "$current_item" -le "$PRD_ITEM_COUNT" ] && [ "$iteration" -lt "$MAX_ITERATIONS" ]; do
     iteration=$((iteration + 1))
@@ -247,18 +265,7 @@ main() {
           echo "  Review: $REVIEW_RESULT — needs attention." >&2
           log_iteration "$iteration" "$current_item" "$mode" "REVIEW_$REVIEW_RESULT" ""
           fix_attempts=$((fix_attempts + 1))
-          # Codex escalation at threshold
-          local codex_threshold=$(( MAX_FIX_ATTEMPTS > 3 ? 3 : MAX_FIX_ATTEMPTS - 1 ))
-          if [ "$fix_attempts" -eq "$codex_threshold" ]; then
-            echo "  Escalating to Codex for cross-model diagnosis..." >&2
-            local codex_diag="$STATE_DIR/codex-diagnosis-latest.md"
-            if codex_diagnose "$STATE_DIR/review-output-latest.log" "$codex_diag"; then
-              log_iteration "$iteration" "$current_item" "$mode" "CODEX_DIAGNOSE" "success"
-            else
-              rm -f "$codex_diag"
-              log_iteration "$iteration" "$current_item" "$mode" "CODEX_DIAGNOSE" "skipped"
-            fi
-          fi
+          _maybe_escalate_to_codex "$STATE_DIR/review-output-latest.log"
           mode="fix-review" ;;
       esac
     else
@@ -267,18 +274,7 @@ main() {
       parse_all_failures "$verify_output" "$STATE_DIR/parsed-failures-latest.md"
       log_iteration "$iteration" "$current_item" "$mode" "VERIFY_FAIL" "$FAILURES layers failed"
       fix_attempts=$((fix_attempts + 1))
-      # Codex escalation at threshold
-      local codex_threshold=$(( MAX_FIX_ATTEMPTS > 3 ? 3 : MAX_FIX_ATTEMPTS - 1 ))
-      if [ "$fix_attempts" -eq "$codex_threshold" ]; then
-        echo "  Escalating to Codex for cross-model diagnosis..." >&2
-        local codex_diag="$STATE_DIR/codex-diagnosis-latest.md"
-        if codex_diagnose "$STATE_DIR/parsed-failures-latest.md" "$codex_diag"; then
-          log_iteration "$iteration" "$current_item" "$mode" "CODEX_DIAGNOSE" "success"
-        else
-          rm -f "$codex_diag"
-          log_iteration "$iteration" "$current_item" "$mode" "CODEX_DIAGNOSE" "skipped"
-        fi
-      fi
+      _maybe_escalate_to_codex "$STATE_DIR/parsed-failures-latest.md"
       if [ "$fix_attempts" -ge "$MAX_FIX_ATTEMPTS" ]; then
         record_stuck_item "$current_item" "$item_text" "$fix_attempts" "$mode"
         current_item=$((current_item + 1)); fix_attempts=0; mode="implement"

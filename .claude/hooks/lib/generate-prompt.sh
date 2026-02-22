@@ -144,8 +144,8 @@ generate_fix_review_prompt() {
   fi
 
   local codex_section=""
-  # Look for Codex diagnosis in the kova-loop state directory
-  local state_dir=".kova-loop"
+  local state_dir
+  state_dir=$(dirname "$review_output_file")
   if [ -f "$state_dir/codex-diagnosis-latest.md" ]; then
     codex_section=$(cat "$state_dir/codex-diagnosis-latest.md")
   fi
