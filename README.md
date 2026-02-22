@@ -60,18 +60,21 @@ Requirements: `jq` (required), `gh` (optional), `@openai/codex` (optional).
 
 ## Core Features
 
+- **Bash-Enforced Loop** — Team Loop is bash-orchestrated: each phase = separate `claude -p` session, verification runs from bash (cannot be skipped)
 - **Safety Hooks** — Blocks dangerous commands (`rm -rf /`, force push, `DROP TABLE`) and protects sensitive files (`.env`, `.pem`, `secrets/`)
+- **Commit Gate Hook** — Blocks `git commit` during loop if verification hasn't passed (PreToolUse enforcement)
 - **Auto-Format** — Formats code on every write using the right tool for each language (Prettier, Ruff, gofmt, rustfmt, RuboCop, etc.)
 - **7-Layer Verification Gate** — Build, unit tests, integration tests, E2E, lint, type check, and security audit run automatically when Claude finishes
 - **Flaky Test Handling** — Failed tests are automatically retried once before blocking
 - **Self-Healing** — After 3 failed verification attempts, writes `DEBUG_LOG.md` and spawns a fresh session to fix
 - **Rate Limiting** — Caps high-frequency loop invocations to prevent saturation
 - **Circuit Breaker** — Stops loops with repeated stuck/no-progress states and writes actionable reports
-- **Team Loop** — 6-phase cycle (Clarify, Plan, Implement, Verify, Review, Commit) that autonomously implements each item in a PRD
+- **Team Loop** — Bash-orchestrated cycle (Implement, Verify, Review, Commit) that autonomously implements each item in a PRD
+- **Interactive Planning** — `/kova:plan` asks clarifying questions and proposes approaches before building
 - **tmux Monitor** — `kova monitor` dashboard for live loop observability
-- **Multi-Model Review** — 4 parallel Claude reviewer agents + optional OpenAI Codex cross-model review for catching blind spots
+- **Multi-Model Review** — Code review via separate `claude -p` session + optional OpenAI Codex cross-model review
 - **Zero-Token CLI** — `kova help`, `kova status`, `kova activate`, `kova deactivate` run in your terminal without consuming LLM tokens
-- **Slash Commands** — `/plan`, `/verify-app`, `/commit-push-pr`, `/fix-and-verify`, `/code-review`, `/simplify`, `/daily-standup`, `/kova:loop`, `/kova:init`
+- **Slash Commands** — `/plan`, `/verify-app`, `/commit-push-pr`, `/fix-and-verify`, `/code-review`, `/simplify`, `/daily-standup`, `/kova:loop`, `/kova:init`, `/kova:plan`
 - **CLAUDE.md Culture Doc** — Teaches Claude to never ask permission for routine decisions, always run tests, and escalate only for production deploys or repeated failures
 - **7 Language Ecosystems** — Node.js, Python, Go, Rust, Ruby, Java, .NET — auto-detected from lockfiles and config files
 - **On-Demand Activation** — Hooks can be toggled on/off without reinstalling
@@ -81,31 +84,51 @@ Requirements: `jq` (required), `gh` (optional), `@openai/codex` (optional).
 
 ## How It Works
 
-The Team Loop (`/kova:loop`) processes each PRD item through 6 phases:
+The Team Loop (`/kova:loop`) is **bash-orchestrated** — Claude is the worker, bash is the boss. Each PRD item goes through this cycle:
 
 ```
-  ┌─────────┐     ┌──────┐     ┌───────────┐
-  │ CLARIFY │────▶│ PLAN │────▶│ IMPLEMENT │
-  │ Phase 0 │     │ Ph 1 │     │  Phase 2  │
-  └─────────┘     └──────┘     └─────┬─────┘
-                                     │
-                                     ▼
-  ┌─────────┐     ┌────────┐   ┌──────────┐
-  │ COMMIT  │◀────│ REVIEW │◀──│  VERIFY  │
-  │ Phase 5 │     │  Ph 4  │   │ Phase 3  │
-  └────┬────┘     └───┬────┘   └────┬─────┘
-       │              │             │
-       │              │    fail     │ fail
-       ▼              └─────────────┘
-   Next Item            (auto-fix)
+  ┌─────────────────────────────────────────────┐
+  │           kova-loop.sh (bash)               │
+  │  Controls flow, runs verification, reviews  │
+  └──────────────────┬──────────────────────────┘
+                     │
+    For each PRD item:
+                     │
+       ┌─────────────▼─────────────┐
+       │   claude -p (implement)   │  ← Separate session per iteration
+       └─────────────┬─────────────┘
+                     │
+       ┌─────────────▼─────────────┐
+       │  verify-gate.sh (bash)    │  ← Build, test, lint, typecheck
+       │  Claude CANNOT skip this  │
+       └─────────────┬─────────────┘
+                     │
+              pass?──┤
+              │      │ fail → generate diagnostic prompt → retry
+              ▼
+       ┌─────────────────────────────┐
+       │  run-code-review.sh (bash)  │  ← Separate claude -p session
+       └─────────────┬───────────────┘
+                     │
+              pass?──┤
+              │      │ HIGH issues → fix-review prompt → retry
+              ▼
+       ┌─────────────────────────────┐
+       │  git commit (bash)          │
+       └─────────────────────────────┘
 ```
 
-- **Phase 0 — Clarify**: Documents assumptions, no questions asked
-- **Phase 1 — Plan**: Brainstorms approaches, picks the best, writes file-level plan
-- **Phase 2 — Implement**: Writes code and tests following the plan
-- **Phase 3 — Verify**: 7-layer gate (build, tests, lint, types, security)
-- **Phase 4 — Review**: 4 Claude agents + optional Codex cross-model review
-- **Phase 5 — Commit**: Conventional Commit with attribution
+**Why bash orchestration?** Prompt-based self-orchestration (telling Claude "please run tests") can be skipped. When bash runs verification _after_ Claude exits, skipping is impossible. Claude is a worker in a pipeline, not the pipeline itself.
+
+### Enforcement layers
+
+| Layer | What | How |
+|-------|------|-----|
+| **Bash orchestrator** | Controls phase flow | `kova-loop.sh` calls `claude -p` per iteration |
+| **Commit gate hook** | Blocks premature commits | `kova-commit-gate.sh` (PreToolUse) checks verification passed |
+| **Stop hook** | Blocks early exit | `verify-on-stop.sh` runs 7-layer gate before Claude can stop |
+| **Circuit breaker** | Stops stagnation | Bash detects stuck/no-progress loops |
+| **Rate limiter** | Prevents API abuse | Caps invocations per hour |
 
 ---
 
@@ -117,7 +140,7 @@ The Team Loop (`/kova:loop`) processes each PRD item through 6 phases:
 | `install.sh` | Installer script — copies `.claude/` into any project |
 | `kova` | CLI script — zero-token commands (help, status, activate, deactivate) |
 | `.claude/settings.json` | Hook configuration and permission rules |
-| `.claude/hooks/*.sh` | 5 automatic hook scripts |
+| `.claude/hooks/*.sh` | 6 automatic hook scripts |
 | `.claude/hooks/lib/*.sh` | 8 shared utility scripts |
 | `.claude/commands/*.md` | 7 workflow slash commands |
 | `.claude/commands/kova/*.md` | Team Loop and init commands |
@@ -137,7 +160,8 @@ CLAUDE.md (rules)
     │       └── lib/detect-stack.sh
     ├── hooks/block-dangerous.sh ─────▶ PreToolUse: safety
     ├── hooks/protect-files.sh ───────▶ PreToolUse: file protection
-    └── hooks/kova-loop.sh ──────────▶ Team Loop orchestration
+    ├── hooks/kova-commit-gate.sh ───▶ PreToolUse: commit enforcement
+    └── hooks/kova-loop.sh ──────────▶ Team Loop orchestration (the boss)
             └── lib/parse-prd.sh
             └── lib/parse-failures.sh
             └── lib/generate-prompt.sh
@@ -199,7 +223,8 @@ kova/
 │   │   ├── verify-on-stop.sh   # 7-layer verification gate
 │   │   ├── block-dangerous.sh  # Block dangerous commands
 │   │   ├── protect-files.sh    # Protect sensitive files
-│   │   ├── kova-loop.sh        # Team Loop orchestration
+│   │   ├── kova-commit-gate.sh # Block commits without verification
+│   │   ├── kova-loop.sh        # Team Loop orchestration (bash boss)
 │   │   └── lib/
 │   │       ├── detect-stack.sh     # Language/framework detection
 │   │       ├── verify-gate.sh      # Verification gate logic
@@ -219,7 +244,8 @@ kova/
 │       ├── daily-standup.md     # /daily-standup
 │       └── kova/
 │           ├── init.md          # /kova:init
-│           ├── loop.md          # /kova:loop
+│           ├── loop.md          # /kova:loop (launcher for kova-loop.sh)
+│           ├── plan.md          # /kova:plan (interactive planning)
 │           └── phases/
 │               ├── clarify.md   # Phase 0
 │               ├── plan.md      # Phase 1
@@ -285,7 +311,8 @@ export PATH="$PWD/.claude:$PATH"
 | `/code-review` | 4 parallel reviewers + optional Codex cross-model review |
 | `/simplify` | Clean up code without changing behavior |
 | `/daily-standup` | Engineering report: shipped, blockers, priorities |
-| `/kova:loop <prd>` | Team Loop: 6-phase cycle per PRD item |
+| `/kova:plan [feature]` | Interactive planning: asks questions, proposes approaches, writes plan |
+| `/kova:loop <prd>` | Team Loop: bash-orchestrated cycle per PRD item |
 | `/kova:init [name]` | Scaffold a new PRD file |
 
 ---

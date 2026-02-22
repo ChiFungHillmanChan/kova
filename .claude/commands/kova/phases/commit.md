@@ -4,6 +4,15 @@ You are the Kova orchestrator executing Phase 5 for item **{{ITEM_NUMBER}}** of 
 
 ## Instructions
 
+<CRITICAL>
+GATE CHECK: Before committing, verify that BOTH Phase 3 and Phase 4 passed:
+```bash
+cat .kova-loop/gates/item-{{ITEM_NUMBER}}-phase-3.gate
+cat .kova-loop/gates/item-{{ITEM_NUMBER}}-phase-4.gate
+```
+If either gate file is missing or RESULT is not "pass", STOP. Do NOT commit.
+</CRITICAL>
+
 Create an atomic commit for this completed item.
 
 ### Step 5.1: Skip Check

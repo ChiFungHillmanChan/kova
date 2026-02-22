@@ -2,6 +2,21 @@
 
 You are the Kova orchestrator executing Phase 4 for item **{{ITEM_NUMBER}}** of **{{TOTAL_ITEMS}}**.
 
+<CRITICAL>
+THIS PHASE IS MANDATORY. YOU MUST ACTUALLY SPAWN REVIEW AGENTS.
+
+Do NOT skip this phase.
+Do NOT self-review in your head — you MUST spawn Task agents.
+Do NOT proceed to Phase 5 without completing this phase.
+Do NOT say "review looks clean" without actually launching reviewers.
+
+GATE CHECK: Before starting, verify that Phase 3 passed:
+```bash
+cat .kova-loop/gates/item-{{ITEM_NUMBER}}-phase-3.gate
+```
+If RESULT is not "pass", STOP. You cannot review code that doesn't build/test.
+</CRITICAL>
+
 ## Instructions
 
 Spawn parallel review agents via the Task tool. This is the biggest quality win
@@ -170,9 +185,16 @@ After all agents (and optionally Codex) return:
 # Run only the new test files to verify they pass
 ```
 
-### Step 4.6: Decide Next Action
+### Step 4.6: Write Gate File and Decide Next Action
+
+<CRITICAL>
+You MUST write the gate file. Without it, Phase 5 cannot proceed.
+</CRITICAL>
 
 **If any HIGH findings exist:**
+```bash
+echo "PHASE=4 RESULT=fail TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) SUMMARY=[N] HIGH findings found" > .kova-loop/gates/item-{{ITEM_NUMBER}}-phase-4.gate
+```
 ```
 Phase 4: [N] HIGH findings found. Entering fix-review mode.
 ```
@@ -180,6 +202,9 @@ Set `mode = "fix-review"`, `fix_attempts += 1`
 Loop back to Phase 2.
 
 **If no HIGH findings (only MEDIUM/LOW or clean):**
+```bash
+echo "PHASE=4 RESULT=pass TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) SUMMARY=[N] findings (0 HIGH, M MEDIUM, L LOW)" > .kova-loop/gates/item-{{ITEM_NUMBER}}-phase-4.gate
+```
 ```
 Phase 4 PASS. [N] findings logged (0 HIGH, M MEDIUM, L LOW).
 ```
