@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Shell](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Compatible-blueviolet.svg)](https://docs.anthropic.com/en/docs/claude-code)
-[![Tests](https://img.shields.io/badge/Tests-178%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-193%20passing-brightgreen.svg)](#testing)
 [![Languages](https://img.shields.io/badge/Languages-EN%20%7C%20%E7%B2%B5%E8%AA%9E%20%7C%20%E4%B8%AD%E6%96%87-orange.svg)](#documentation)
 
 > Autonomous engineering protocol for Claude Code: safe by default, verified before stop, and built to ship.
@@ -18,7 +18,7 @@
 - **Circuit breaker** for stuck or no-progress loops with clear failure reports
 - **tmux dashboard** via `kova-monitor` (`start`, `attach`, `status`, `dashboard`, `stop`)
 - **Global install + setup wizard** (`install.sh --global`, `kova setup`)
-- **178 automated tests passing** (unit + integration + regression)
+- **193 automated tests passing** (unit + integration + regression)
 - **CI on Linux and macOS** with ShellCheck + Bats
 
 See [RELEASE_NOTES.md](RELEASE_NOTES.md) for upgrade notes and details.
@@ -73,6 +73,7 @@ Requirements: `jq` (required), `gh` (optional), `@openai/codex` (optional).
 - **Interactive Planning** — `/kova:plan` asks clarifying questions and proposes approaches before building
 - **tmux Monitor** — `kova monitor` dashboard for live loop observability
 - **Multi-Model Review** — Code review via separate `claude -p` session + optional OpenAI Codex cross-model review
+- **Status Line Indicator** — Shows `[KOVA]` (active), `[KOVA LOOP]` (loop running), or `[kova off]` (inactive) in the Claude Code status line
 - **Zero-Token CLI** — `kova help`, `kova status`, `kova activate`, `kova deactivate` run in your terminal without consuming LLM tokens
 - **Slash Commands** — `/plan`, `/verify-app`, `/commit-push-pr`, `/fix-and-verify`, `/code-review`, `/simplify`, `/daily-standup`, `/kova:loop`, `/kova:init`, `/kova:plan`
 - **CLAUDE.md Culture Doc** — Teaches Claude to never ask permission for routine decisions, always run tests, and escalate only for production deploys or repeated failures
@@ -139,8 +140,9 @@ The Team Loop (`/kova:loop`) is **bash-orchestrated** — Claude is the worker, 
 | `CLAUDE.md` | Culture document — teaches Claude autonomous behavior |
 | `install.sh` | Installer script — copies `.claude/` into any project |
 | `kova` | CLI script — zero-token commands (help, status, activate, deactivate) |
+| `.claude/hooks/lib/kova-statusline.sh` | Status line indicator (active/inactive/loop state) |
 | `.claude/settings.json` | Hook configuration and permission rules |
-| `.claude/hooks/*.sh` | 6 automatic hook scripts |
+| `.claude/hooks/*.sh` | 7 automatic hook scripts |
 | `.claude/hooks/lib/*.sh` | 8 shared utility scripts |
 | `.claude/commands/*.md` | 7 workflow slash commands |
 | `.claude/commands/kova/*.md` | Team Loop and init commands |
@@ -161,7 +163,8 @@ CLAUDE.md (rules)
     ├── hooks/block-dangerous.sh ─────▶ PreToolUse: safety
     ├── hooks/protect-files.sh ───────▶ PreToolUse: file protection
     ├── hooks/kova-commit-gate.sh ───▶ PreToolUse: commit enforcement
-    └── hooks/kova-loop.sh ──────────▶ Team Loop orchestration (the boss)
+    ├── hooks/kova-loop.sh ──────────▶ Team Loop orchestration (the boss)
+    └── hooks/lib/kova-statusline.sh ▶ Status line indicator (active/inactive/loop)
             └── lib/parse-prd.sh
             └── lib/parse-failures.sh
             └── lib/generate-prompt.sh
@@ -204,6 +207,36 @@ If not installed, Codex review is silently skipped. Everything else works normal
 
 ---
 
+## Status Line Indicator
+
+Kova shows its activation state directly in the Claude Code status line:
+
+| State | Indicator | Color | When |
+|-------|-----------|-------|------|
+| Active | `[KOVA]` | Green | Kova hooks are registered in settings |
+| Loop | `[KOVA LOOP]` | Yellow | A Team Loop is running (`.kova-loop/` exists) |
+| Inactive | `[kova off]` | Dim | No kova hooks registered |
+
+The indicator is automatically installed when you run `install.sh`. It detects state by checking `.claude/settings.local.json` (then `.claude/settings.json`) for registered kova hook scripts.
+
+If you already have a custom status line script, `install.sh` injects the kova indicator into it (with a backup). If you don't have one, it creates a status line script with directory, git branch, model, context usage, and the kova indicator.
+
+### Manual setup
+
+If you prefer to add the indicator to your own script:
+
+```bash
+# In your ~/.claude/statusline-command.sh:
+KOVA_STATUSLINE_LIB="$cwd/.claude/hooks/lib/kova-statusline.sh"
+if [ -f "$KOVA_STATUSLINE_LIB" ]; then
+  . "$KOVA_STATUSLINE_LIB"
+  kova_indicator=$(kova_statusline_indicator "$cwd")
+fi
+# Then include $kova_indicator in your printf/echo output
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -232,8 +265,9 @@ kova/
 │   │       ├── parse-failures.sh   # Failure parser
 │   │       ├── generate-prompt.sh  # Prompt generator
 │   │       ├── run-code-review.sh  # Code review orchestrator
-│   │       ├── rate-limiter.sh    # Rate limiting for API calls
-│   │       └── circuit-breaker.sh # Circuit breaker for stuck loops
+│   │       ├── rate-limiter.sh     # Rate limiting for API calls
+│   │       ├── circuit-breaker.sh  # Circuit breaker for stuck loops
+│   │       └── kova-statusline.sh  # Status line indicator for Claude Code
 │   └── commands/
 │       ├── plan.md              # /plan
 │       ├── verify-app.md        # /verify-app
@@ -357,7 +391,7 @@ Full guides available in three languages:
 
 ## Testing
 
-Kova includes **178 automated tests** across three suites. See [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
+Kova includes **193 automated tests** across three suites. See [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
 
 ```bash
 npm install              # Install test dependencies
@@ -367,7 +401,7 @@ npm run lint             # ShellCheck all shell scripts
 
 | Suite | Tests | What it covers |
 |-------|-------|----------------|
-| Unit | 108 | parser/detector libs, rate limiter, circuit breaker, monitor behaviors |
+| Unit | 123 | parser/detector libs, rate limiter, circuit breaker, monitor, statusline |
 | Integration | 63 | install, activate/deactivate, status, monitor, global install workflows |
 | Regression | 7 | Hook-name consistency across kova/install/settings |
 

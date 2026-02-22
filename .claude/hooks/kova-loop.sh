@@ -145,9 +145,11 @@ main() {
   rate_limit_init "$STATE_DIR"
 
   local completed_context=""
-  for item in "${PRD_COMPLETED[@]}"; do
-    [ -n "$item" ] && completed_context="$completed_context\n- [x] $item"
-  done
+  if [ "$PRD_COMPLETED_COUNT" -gt 0 ]; then
+    for item in "${PRD_COMPLETED[@]}"; do
+      [ -n "$item" ] && completed_context="$completed_context\n- [x] $item"
+    done
+  fi
 
   local iteration=0 current_item=1 fix_attempts=0 mode="implement"
   local consecutive_stuck_items=0

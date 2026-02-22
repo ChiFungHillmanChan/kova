@@ -50,6 +50,7 @@ installed_hook_files() {
   echo "block-dangerous.sh"
   echo "protect-files.sh"
   echo "kova-loop.sh"
+  echo "kova-commit-gate.sh"
 }
 
 # List of lib scripts that install.sh is expected to install
@@ -62,4 +63,5 @@ installed_lib_files() {
   echo "run-code-review.sh"
   echo "rate-limiter.sh"
   echo "circuit-breaker.sh"
+  echo "kova-statusline.sh"
 }

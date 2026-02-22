@@ -91,8 +91,9 @@ cmd_help() {
   format.sh           Format on every file write
   block-dangerous.sh  Block rm -rf, force push, DROP TABLE
   protect-files.sh    Block edits to .env, .pem, secrets
-  verify-on-stop.sh   7-layer gate when Claude finishes
-  kova-loop.sh        Team Loop orchestration
+  verify-on-stop.sh      7-layer gate when Claude finishes
+  kova-commit-gate.sh    Block commits without verification
+  kova-loop.sh           Team Loop orchestration
 
  SUPPORTED LANGUAGES
  ─────────────────────────────────────────────
@@ -169,7 +170,7 @@ cmd_status() {
 
   # Check hook scripts exist
   local missing_hooks=0
-  for hook in format.sh block-dangerous.sh protect-files.sh verify-on-stop.sh kova-loop.sh; do
+  for hook in format.sh block-dangerous.sh protect-files.sh verify-on-stop.sh kova-loop.sh kova-commit-gate.sh; do
     if [ ! -f "$PROJECT_ROOT/.claude/hooks/$hook" ]; then
       missing_hooks=$((missing_hooks + 1))
     fi
@@ -251,7 +252,10 @@ cmd_activate() {
   "PreToolUse": [
     {
       "matcher": "Bash",
-      "hooks": [{"type": "command", "command": "cat | .claude/hooks/block-dangerous.sh", "timeout": 5}]
+      "hooks": [
+        {"type": "command", "command": "cat | .claude/hooks/block-dangerous.sh", "timeout": 5},
+        {"type": "command", "command": "cat | .claude/hooks/kova-commit-gate.sh", "timeout": 5}
+      ]
     },
     {
       "matcher": "Write|Edit|MultiEdit",

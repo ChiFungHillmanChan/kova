@@ -1,6 +1,6 @@
 {
   "name": "kova",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Autonomous engineering protocol for Claude Code",
   "scripts": {

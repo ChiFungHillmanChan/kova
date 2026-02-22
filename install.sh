@@ -108,6 +108,7 @@ if $DRY_RUN; then
   echo "  hooks/block-dangerous.sh"
   echo "  hooks/protect-files.sh"
   echo "  hooks/kova-loop.sh"
+  echo "  hooks/kova-commit-gate.sh"
   echo "  hooks/lib/detect-stack.sh"
   echo "  hooks/lib/parse-prd.sh"
   echo "  hooks/lib/verify-gate.sh"
@@ -116,6 +117,7 @@ if $DRY_RUN; then
   echo "  hooks/lib/run-code-review.sh"
   echo "  hooks/lib/rate-limiter.sh"
   echo "  hooks/lib/circuit-breaker.sh"
+  echo "  hooks/lib/kova-statusline.sh"
   echo "  kova-monitor (CLI script → .claude/kova-monitor)"
   echo "  commands/commit-push-pr.md"
   echo "  commands/verify-app.md"
@@ -163,7 +165,8 @@ cp "$SCRIPT_DIR/.claude/hooks/format.sh"          "$TARGET_DIR/.claude/hooks/"
 cp "$SCRIPT_DIR/.claude/hooks/verify-on-stop.sh"  "$TARGET_DIR/.claude/hooks/"
 cp "$SCRIPT_DIR/.claude/hooks/block-dangerous.sh" "$TARGET_DIR/.claude/hooks/"
 cp "$SCRIPT_DIR/.claude/hooks/protect-files.sh"   "$TARGET_DIR/.claude/hooks/"
-cp "$SCRIPT_DIR/.claude/hooks/kova-loop.sh"  "$TARGET_DIR/.claude/hooks/"
+cp "$SCRIPT_DIR/.claude/hooks/kova-loop.sh"       "$TARGET_DIR/.claude/hooks/"
+cp "$SCRIPT_DIR/.claude/hooks/kova-commit-gate.sh" "$TARGET_DIR/.claude/hooks/"
 
 # Copy shared library
 cp "$SCRIPT_DIR/.claude/hooks/lib/detect-stack.sh"      "$TARGET_DIR/.claude/hooks/lib/"
@@ -174,6 +177,7 @@ cp "$SCRIPT_DIR/.claude/hooks/lib/generate-prompt.sh"   "$TARGET_DIR/.claude/hoo
 cp "$SCRIPT_DIR/.claude/hooks/lib/run-code-review.sh"   "$TARGET_DIR/.claude/hooks/lib/"
 cp "$SCRIPT_DIR/.claude/hooks/lib/rate-limiter.sh"     "$TARGET_DIR/.claude/hooks/lib/"
 cp "$SCRIPT_DIR/.claude/hooks/lib/circuit-breaker.sh"  "$TARGET_DIR/.claude/hooks/lib/"
+cp "$SCRIPT_DIR/.claude/hooks/lib/kova-statusline.sh" "$TARGET_DIR/.claude/hooks/lib/"
 
 # Make hooks executable
 chmod +x "$TARGET_DIR/.claude/hooks/"*.sh
@@ -242,6 +246,123 @@ if ! command -v codex &>/dev/null; then
   echo "   codex login"
   echo "   If not installed, Codex review is silently skipped."
 fi
+
+# Install statusline integration
+install_statusline() {
+  local user_settings_dir="$HOME/.claude"
+  local statusline_script="$user_settings_dir/statusline-command.sh"
+  local kova_marker="# --- KOVA STATUSLINE ---"
+
+  # Check if user already has a statusline script with kova integration
+  if [ -f "$statusline_script" ] && grep -q "$kova_marker" "$statusline_script" 2>/dev/null; then
+    echo "  Statusline: kova indicator already integrated"
+    return 0
+  fi
+
+  if [ -f "$statusline_script" ]; then
+    # Backup existing script
+    cp "$statusline_script" "$statusline_script.bak"
+    echo "  Statusline: backed up existing to statusline-command.sh.bak"
+
+    # Inject kova indicator by appending a block at the end of the existing script.
+    # We append rather than splicing into the last line to avoid corrupting
+    # scripts with unexpected formats (single-quoted, no trailing quote, etc.).
+    # Uses ${cwd:-$PWD} to handle scripts that don't define $cwd.
+    {
+      cat "$statusline_script"
+      printf '\n%s\n' "$kova_marker"
+      cat <<'KOVA_INJECT'
+# Source kova statusline detection (appended by kova install)
+_kova_dir="${cwd:-$PWD}"
+_kova_lib="$_kova_dir/.claude/hooks/lib/kova-statusline.sh"
+if [ -f "$_kova_lib" ]; then
+  . "$_kova_lib"
+  printf ' %s' "$(kova_statusline_indicator "$_kova_dir")"
+fi
+KOVA_INJECT
+      printf '%s\n' "$kova_marker"
+    } > "$statusline_script.tmp"
+    mv "$statusline_script.tmp" "$statusline_script"
+    chmod +x "$statusline_script"
+    echo "  Statusline: kova indicator appended to existing script"
+  else
+    # Create a new statusline script with kova integration
+    mkdir -p "$user_settings_dir"
+    cat > "$statusline_script" <<'STATUSLINE'
+#!/bin/sh
+# Claude Code statusline script with Kova integration
+# Reads JSON from stdin and outputs a formatted status line
+
+input=$(cat)
+
+# Extract fields from JSON
+cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // ""')
+model=$(echo "$input" | jq -r '.model.display_name // ""')
+used_pct=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
+
+# Shorten the cwd: replace $HOME with ~
+home="$HOME"
+short_cwd="${cwd#$home}"
+if [ "$short_cwd" != "$cwd" ]; then
+  short_cwd="~$short_cwd"
+fi
+
+# Get git branch
+git_branch=""
+if git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1; then
+  git_branch=$(git -C "$cwd" symbolic-ref --short HEAD 2>/dev/null || git -C "$cwd" rev-parse --short HEAD 2>/dev/null)
+fi
+
+# Build context usage display
+ctx_display=""
+if [ -n "$used_pct" ]; then
+  used_rounded=$(printf "%.0f" "$used_pct")
+  ctx_display=" | ctx: ${used_rounded}% used"
+fi
+
+# Build git display
+git_display=""
+if [ -n "$git_branch" ]; then
+  git_display=" | $git_branch"
+fi
+
+# --- KOVA STATUSLINE ---
+# Source kova statusline detection
+KOVA_STATUSLINE_LIB="$cwd/.claude/hooks/lib/kova-statusline.sh"
+kova_indicator=""
+if [ -f "$KOVA_STATUSLINE_LIB" ]; then
+  . "$KOVA_STATUSLINE_LIB"
+  kova_indicator=" $(kova_statusline_indicator "$cwd")"
+fi
+# --- KOVA STATUSLINE ---
+
+# Output: dir | branch model | ctx [KOVA]
+printf "\033[0;36m%s\033[0m\033[0;33m%s\033[0m\033[0;35m %s\033[0m\033[0;32m%s\033[0m%s" \
+  "$short_cwd" \
+  "$git_display" \
+  "$model" \
+  "$ctx_display" \
+  "$kova_indicator"
+STATUSLINE
+    chmod +x "$statusline_script"
+    echo "  Statusline: created $statusline_script with kova indicator"
+
+    # Also configure Claude Code settings if statusLine not already set
+    local user_settings="$user_settings_dir/settings.json"
+    if [ -f "$user_settings" ] && command -v jq &>/dev/null; then
+      local has_statusline
+      has_statusline=$(jq 'has("statusLine")' "$user_settings" 2>/dev/null || echo "false")
+      if [ "$has_statusline" != "true" ]; then
+        local updated
+        updated=$(jq '. + {"statusLine": {"type": "command", "command": "sh '"$statusline_script"'"}}' "$user_settings")
+        echo "$updated" > "$user_settings"
+        echo "  Statusline: configured in Claude Code settings"
+      fi
+    fi
+  fi
+}
+
+install_statusline
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
