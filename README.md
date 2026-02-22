@@ -290,7 +290,11 @@ kova/
 └── docs/
     ├── en/README.md         # Full guide (English)
     ├── zh-hk/README.md      # Full guide (Cantonese)
-    └── zh-cn/README.md      # Full guide (Simplified Chinese)
+    ├── zh-cn/README.md      # Full guide (Simplified Chinese)
+    └── tmux/
+        ├── tmux-guide-en.md      # tmux guide (English)
+        ├── tmux-guide-zh-hant.md # tmux guide (繁體中文)
+        └── tmux-guide-zh-hans.md # tmux guide (简体中文)
 ```
 
 ---
@@ -386,6 +390,14 @@ Full guides available in three languages:
 | English | [docs/en/README.md](docs/en/README.md) |
 | Cantonese (粵語) | [docs/zh-hk/README.md](docs/zh-hk/README.md) |
 | Simplified Chinese (简体中文) | [docs/zh-cn/README.md](docs/zh-cn/README.md) |
+
+### Guides
+
+| Topic | Link |
+|-------|------|
+| tmux Guide (English) | [docs/tmux/tmux-guide-en.md](docs/tmux/tmux-guide-en.md) |
+| tmux Guide (繁體中文) | [docs/tmux/tmux-guide-zh-hant.md](docs/tmux/tmux-guide-zh-hant.md) |
+| tmux Guide (简体中文) | [docs/tmux/tmux-guide-zh-hans.md](docs/tmux/tmux-guide-zh-hans.md) |
 
 ---
 
