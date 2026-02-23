@@ -228,6 +228,42 @@ Kova is heading toward **multi-tool support** (any AI coding tool as a worker), 
 
 ---
 
+## Star History
+
+<a href="https://star-history.com/#ChiFungHillmanChan/kova&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=ChiFungHillmanChan/kova&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=ChiFungHillmanChan/kova&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=ChiFungHillmanChan/kova&type=Date" />
+ </picture>
+</a>
+
+---
+
+## Contributors
+
+Thanks to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/ChiFungHillmanChan"><img src="https://github.com/ChiFungHillmanChan.png?size=100" width="100px;" alt="Hillman Chan"/><br /><sub><b>Hillman Chan</b></sub></a><br /><a href="#ideas-ChiFungHillmanChan" title="Ideas, Planning, & Feedback">🤔</a> <a href="https://github.com/ChiFungHillmanChan/kova/commits?author=ChiFungHillmanChan" title="Code">💻</a> <a href="https://github.com/ChiFungHillmanChan/kova/commits?author=ChiFungHillmanChan" title="Documentation">📖</a> <a href="https://github.com/ChiFungHillmanChan/kova/commits?author=ChiFungHillmanChan" title="Tests">⚠️</a></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get started.
+
+---
+
 ## Philosophy
 
 > "You don't trust; you instrument."
