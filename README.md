@@ -87,6 +87,7 @@ kova setup
 | Resource | Link |
 |----------|------|
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Roadmap | [ROADMAP.md](ROADMAP.md) |
 | Release Notes | [RELEASE_NOTES.md](RELEASE_NOTES.md) |
 | License | [MIT](LICENSE) |
 
@@ -218,6 +219,12 @@ npm run lint    # ShellCheck all scripts
 ```
 
 CI runs on both Linux and macOS for every PR. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+---
+
+## Roadmap
+
+Kova is heading toward **multi-tool support** (any AI coding tool as a worker), **editor integration** (VS Code extension), and **CI enforcement** (GitHub Action). See the full [ROADMAP.md](ROADMAP.md) for details and how to contribute.
 
 ---
 
