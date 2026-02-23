@@ -89,71 +89,23 @@ record_stuck_item() {
   } >> "$STATE_DIR/STUCK_ITEMS.md"
 }
 
-## Formats stream-json output into readable live display.
-## Shows: tool calls (Read, Edit, Write, Bash), text output, and errors.
-format_stream_json() {
-  local json_log="$1"
-  local current_tool=""
-  while IFS= read -r line; do
-    # Save raw JSON to log
-    echo "$line" >> "$json_log"
-    # Parse event type
-    local type tool_name
-    type=$(echo "$line" | jq -r '.type // empty' 2>/dev/null) || continue
-    case "$type" in
-      content_block_start)
-        tool_name=$(echo "$line" | jq -r '.content_block.name // empty' 2>/dev/null)
-        if [[ -n "$tool_name" ]]; then
-          current_tool="$tool_name"
-          echo "  ┌─ Tool: $tool_name ─────────────────────" >&2
-        fi ;;
-      content_block_delta)
-        local text
-        text=$(echo "$line" | jq -r '.delta.text // empty' 2>/dev/null)
-        if [[ -n "$text" ]]; then
-          printf '%s' "$text" >&2
-        fi
-        # Show partial JSON for tool inputs
-        local partial
-        partial=$(echo "$line" | jq -r '.delta.partial_json // empty' 2>/dev/null)
-        if [[ -n "$partial" ]]; then
-          printf '%s' "$partial" >&2
-        fi ;;
-      content_block_stop)
-        if [[ -n "$current_tool" ]]; then
-          echo "" >&2
-          echo "  └────────────────────────────────────────" >&2
-          current_tool=""
-        fi ;;
-      result)
-        local cost_usd
-        cost_usd=$(echo "$line" | jq -r '.cost_usd // empty' 2>/dev/null)
-        echo "" >&2
-        echo "  ── Session done (cost: \$${cost_usd:-unknown}) ──" >&2
-        # Extract final text for the output file
-        echo "$line" | jq -r '.result // empty' 2>/dev/null
-        ;;
-    esac
-  done
-}
-
 run_claude_with_prompt() {
   local prompt_file="$1" output_file="$2"
   if ! command -v claude &>/dev/null; then
     echo "ERROR: claude CLI not found." >&2; return 1
   fi
   local prompt_content; prompt_content=$(cat "$prompt_file")
-  local json_log="${output_file%.log}.json"
   if [[ "${KOVA_SILENT:-0}" == "1" ]]; then
-    # Silent: capture text output only
+    # Silent: capture text output only, restricted tools
     KOVA_LOOP_ACTIVE=1 claude -p "$prompt_content" \
       --allowedTools "Edit,Write,Bash,Read,Glob,Grep" \
       --output-format text > "$output_file" 2>&1
   else
-    # Transparent: stream JSON events, format for live display
+    # Transparent: interactive-style output you can watch live
+    # Restrict tools to safe editing/reading set — same as silent mode
     KOVA_LOOP_ACTIVE=1 claude -p "$prompt_content" \
       --allowedTools "Edit,Write,Bash,Read,Glob,Grep" \
-      --output-format stream-json 2>&1 | format_stream_json "$json_log" > "$output_file"
+      2>&1 | tee "$output_file"
   fi
   return $?
 }
