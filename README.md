@@ -10,6 +10,20 @@
 
 **Kova** drops into any project and turns Claude Code from "assistant that asks" into "engineering system that executes, verifies, and self-corrects."
 
+<p align="center">
+  <img src="demo.gif" alt="Kova Quick Demo" width="800" />
+</p>
+
+<details>
+<summary>Regenerate the demo GIF</summary>
+
+Requires [VHS](https://github.com/charmbracelet/vhs):
+
+```bash
+vhs demo.tape    # outputs demo.gif
+```
+</details>
+
 ---
 
 ## Quick Start
