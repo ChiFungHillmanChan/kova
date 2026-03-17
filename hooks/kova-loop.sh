@@ -111,6 +111,24 @@ snapshot_pre_iteration() {
   git diff --name-only HEAD 2>/dev/null | sort > "$STATE_DIR/.pre-tracked"
   # List of all untracked files (excluding .gitignore'd)
   git ls-files --others --exclude-standard 2>/dev/null | sort > "$STATE_DIR/.pre-untracked"
+  : > "$STATE_DIR/.pre-tracked-hashes"
+
+  local tracked_file
+  while IFS= read -r tracked_file; do
+    [ -z "$tracked_file" ] && continue
+    printf '%s\t%s\n' "$tracked_file" "$(working_tree_hash "$tracked_file")" >> "$STATE_DIR/.pre-tracked-hashes"
+  done < "$STATE_DIR/.pre-tracked"
+}
+
+# Hash the current working-tree contents for a tracked path so we can tell
+# whether a file that was already dirty changed again during this iteration.
+working_tree_hash() {
+  local path="$1"
+  if [ -e "$path" ]; then
+    git hash-object --no-filters -- "$path" 2>/dev/null || echo "__HASH_ERROR__"
+  else
+    echo "__MISSING__"
+  fi
 }
 
 # Stage only files that changed SINCE the pre-iteration snapshot.
@@ -127,10 +145,18 @@ stage_item_changes() {
   comm -13 "$STATE_DIR/.pre-tracked" "$STATE_DIR/.post-tracked" 2>/dev/null | while IFS= read -r changed_file; do
     [ -n "$changed_file" ] && git add -- "$changed_file" 2>/dev/null || true
   done
-  # Also stage tracked files that were already dirty but may have been modified further
-  # by Claude (we compare content, not just presence in the list)
+  # Stage tracked files that were already dirty only if their contents changed
+  # after the snapshot. This keeps unrelated pre-existing edits out of the commit.
   comm -12 "$STATE_DIR/.pre-tracked" "$STATE_DIR/.post-tracked" 2>/dev/null | while IFS= read -r changed_file; do
-    [ -n "$changed_file" ] && git add -- "$changed_file" 2>/dev/null || true
+    [ -z "$changed_file" ] && continue
+
+    local pre_hash post_hash
+    pre_hash=$(awk -F '\t' -v target="$changed_file" '$1 == target { print $2; exit }' "$STATE_DIR/.pre-tracked-hashes")
+    post_hash=$(working_tree_hash "$changed_file")
+
+    if [ -n "$pre_hash" ] && [ "$pre_hash" != "$post_hash" ]; then
+      git add -- "$changed_file" 2>/dev/null || true
+    fi
   done
 
   # Stage only NEW untracked files (not present before Claude ran)
@@ -146,7 +172,7 @@ stage_item_changes() {
 
   # Safety net: unstage any sensitive files
   git reset HEAD -- '*.env' '*.env.*' '*.pem' '*.key' '*.p12' '*.pfx' '*.jks' \
-    'secrets/' 'credentials/' '.secrets/' '.credentials/' 2>/dev/null || true
+    'secrets/' 'credentials/' '.secrets/' '.credentials/' >/dev/null 2>&1 || true
 }
 
 commit_item() {
@@ -353,4 +379,6 @@ main() {
   exit 0
 }
 
-main "$@"
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi
