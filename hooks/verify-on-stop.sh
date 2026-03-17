@@ -29,8 +29,11 @@ fi
 
 # --- Retry counter (max 3 attempts) ---
 PROJ_HASH=$(project_hash "$CLAUDE_PROJECT_DIR")
-COUNTER_FILE="/tmp/.claude-verify-stop-$PROJ_HASH"
-HISTORY_FILE="/tmp/.claude-verify-history-$PROJ_HASH"
+KOVA_TMP="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/kova-$PROJ_HASH"
+mkdir -p "$KOVA_TMP" 2>/dev/null
+chmod 700 "$KOVA_TMP" 2>/dev/null
+COUNTER_FILE="$KOVA_TMP/verify-stop-counter"
+HISTORY_FILE="$KOVA_TMP/verify-stop-history"
 ATTEMPT=$(cat "$COUNTER_FILE" 2>/dev/null || echo "0")
 ATTEMPT=$((ATTEMPT + 1))
 echo "$ATTEMPT" > "$COUNTER_FILE"
@@ -56,7 +59,7 @@ $(cat "$HISTORY_FILE" 2>/dev/null || echo "No history available")
 DEBUGEOF
 
   # Cross-model diagnosis before self-heal
-  codex_diag="/tmp/.claude-codex-diag-$PROJ_HASH"
+  codex_diag="$KOVA_TMP/codex-diag"
   if codex_diagnose "DEBUG_LOG.md" "$codex_diag"; then
     echo "" >> DEBUG_LOG.md
     cat "$codex_diag" >> DEBUG_LOG.md
@@ -79,7 +82,7 @@ DEBUGEOF
     PROMPT="Read DEBUG_LOG.md and fix all failures listed. Pay special attention to the 'Cross-Model Diagnosis [codex]' section if present — it contains analysis from a different AI model. Run tests after each fix. Do not ask questions — use the assumption protocol."
     CLAUDE_SELF_HEAL=1 nohup claude -p "$PROMPT" \
       --allowedTools "Edit,Write,Bash,Read,Glob,Grep" \
-      > "/tmp/.claude-self-heal-$PROJ_HASH.log" 2>&1 &
+      > "$KOVA_TMP/self-heal.log" 2>&1 &
     echo "STOP GATE: Self-healing session spawned (PID: $!)." >&2
   else
     echo "STOP GATE: claude CLI not found. Manual fix required." >&2

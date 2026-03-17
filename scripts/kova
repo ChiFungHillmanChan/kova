@@ -45,6 +45,98 @@ SETTINGS="$PROJECT_ROOT/.claude/settings.json"
 # Resolve kova root: use CLAUDE_PLUGIN_ROOT if available, else script's parent
 KOVA_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
+KOVA_HOOK_FILES=(
+  format.sh
+  verify-on-stop.sh
+  block-dangerous.sh
+  protect-files.sh
+  kova-loop.sh
+  kova-commit-gate.sh
+)
+
+KOVA_LIB_FILES=(
+  detect-stack.sh
+  parse-prd.sh
+  verify-gate.sh
+  parse-failures.sh
+  generate-prompt.sh
+  run-code-review.sh
+  rate-limiter.sh
+  circuit-breaker.sh
+  codex-assist.sh
+  kova-statusline.sh
+  kova-snapshot.sh
+  kova-verify.sh
+  kova-safe-commit.sh
+  kova-cleanup.sh
+)
+
+readonly KOVA_HOOK_COMMANDS_JSON='[
+  "cat | .claude/hooks/block-dangerous.sh",
+  "cat | .claude/hooks/kova-commit-gate.sh",
+  "cat | .claude/hooks/protect-files.sh",
+  "cat | .claude/hooks/format.sh",
+  "cat | .claude/hooks/verify-on-stop.sh"
+]'
+
+remove_kova_hooks_from_settings_file() {
+  local file="$1"
+  local current updated
+
+  current="$(cat "$file")"
+  updated="$(jq --argjson kova_commands "$KOVA_HOOK_COMMANDS_JSON" '
+    def strip_kova_hooks($kova_commands):
+      if (.hooks | type?) != "object" then
+        .
+      else
+        .hooks |= with_entries(
+          .value |= (
+            if type == "array" then
+              map(
+                if (.hooks | type?) == "array" then
+                  .hooks |= map(
+                    select(
+                      (.command? // "") as $cmd
+                      | ($kova_commands | index($cmd)) == null
+                    )
+                  )
+                  | select((.hooks | length) > 0)
+                else
+                  .
+                end
+              )
+            else
+              .
+            end
+          )
+          | select((.value | type) != "array" or (.value | length) > 0)
+        )
+        | if (.hooks | length) == 0 then del(.hooks) else . end
+      end;
+    strip_kova_hooks($kova_commands)
+  ' "$file")" || return 1
+
+  if [ "$updated" != "$current" ]; then
+    printf '%s\n' "$updated" > "$file"
+    return 0
+  fi
+
+  return 1
+}
+
+is_kova_managed_settings_file() {
+  local file="$1"
+
+  jq --argjson kova_commands "$KOVA_HOOK_COMMANDS_JSON" '
+    def hook_commands:
+      [.hooks[]?[]? | .hooks[]?.command?];
+
+    ([keys_unsorted[]] - ["hooks", "permissions"] | length) == 0
+    and (hook_commands | length) > 0
+    and all(hook_commands[]; $kova_commands | index(.) != null)
+  ' "$file" 2>/dev/null
+}
+
 # ─────────────────────────────────────────────
 # kova help
 # ─────────────────────────────────────────────
@@ -65,6 +157,7 @@ cmd_help() {
   kova activate      Turn ON all automatic hooks
   kova deactivate    Turn OFF all automatic hooks
   kova install       Install Kova into current project
+  kova uninstall     Remove Kova from current project
   kova setup         Interactive setup wizard
   kova monitor       tmux dashboard (delegates to kova-monitor)
 
@@ -425,6 +518,103 @@ cmd_setup() {
 }
 
 # ─────────────────────────────────────────────
+# kova uninstall
+# ─────────────────────────────────────────────
+cmd_uninstall() {
+  local proj_dir
+  proj_dir="$(find_project_root)"
+
+  echo ""
+  echo -e "${BOLD}KOVA UNINSTALL${RESET}"
+  echo "═══════════════════════════════════════"
+  echo "  Project: $proj_dir"
+  echo ""
+
+  # Remove hooks
+  for hook in "${KOVA_HOOK_FILES[@]}"; do
+    if [ -f "$proj_dir/.claude/hooks/$hook" ]; then
+      rm -f "$proj_dir/.claude/hooks/$hook"
+      echo -e "  ${RED}✗${RESET} Removed hook: $hook"
+    fi
+  done
+
+  # Remove Kova-owned shared library files only
+  if [ -d "$proj_dir/.claude/hooks/lib" ]; then
+    local lib
+    for lib in "${KOVA_LIB_FILES[@]}"; do
+      if [ -f "$proj_dir/.claude/hooks/lib/$lib" ]; then
+        rm -f "$proj_dir/.claude/hooks/lib/$lib"
+        echo -e "  ${RED}✗${RESET} Removed hooks/lib/$lib"
+      fi
+    done
+
+    rmdir "$proj_dir/.claude/hooks/lib" 2>/dev/null && echo -e "  ${RED}✗${RESET} Removed empty hooks/lib/"
+  fi
+
+  # Remove empty hooks dir if nothing else remains
+  rmdir "$proj_dir/.claude/hooks" 2>/dev/null && echo -e "  ${RED}✗${RESET} Removed empty hooks/"
+
+  # Remove slash commands installed by Kova
+  for cmd_file in commit-push-pr.md verify-app.md daily-standup.md fix-and-verify.md code-review.md plan.md simplify.md; do
+    rm -f "$proj_dir/.claude/commands/$cmd_file"
+  done
+  if [ -d "$proj_dir/.claude/commands/kova" ]; then
+    rm -rf "$proj_dir/.claude/commands/kova"
+    echo -e "  ${RED}✗${RESET} Removed commands/kova/"
+  fi
+  echo -e "  ${RED}✗${RESET} Removed slash commands"
+
+  # Remove CLI scripts
+  rm -f "$proj_dir/.claude/kova"
+  rm -f "$proj_dir/.claude/kova-monitor"
+  echo -e "  ${RED}✗${RESET} Removed kova and kova-monitor CLIs"
+
+  # Remove Kova-managed hooks from settings.local.json, preserving user hooks
+  if [ -f "$proj_dir/.claude/settings.local.json" ] && command -v jq &>/dev/null; then
+    if remove_kova_hooks_from_settings_file "$proj_dir/.claude/settings.local.json"; then
+      echo -e "  ${RED}✗${RESET} Removed Kova hooks from settings.local.json"
+    fi
+  fi
+
+  # Restore settings.json from latest backup if available
+  local latest_bak=""
+  # shellcheck disable=SC2012
+  latest_bak=$(ls -t "$proj_dir/.claude/settings.json.bak"* 2>/dev/null | head -1)
+  if [ -n "$latest_bak" ]; then
+    cp "$latest_bak" "$proj_dir/.claude/settings.json"
+    echo -e "  ${GREEN}↺${RESET} Restored settings.json from backup"
+  elif [ -f "$proj_dir/.claude/settings.json" ] && command -v jq &>/dev/null; then
+    local is_kova_managed="false"
+    is_kova_managed=$(is_kova_managed_settings_file "$proj_dir/.claude/settings.json" || echo "false")
+
+    if remove_kova_hooks_from_settings_file "$proj_dir/.claude/settings.json"; then
+      if [ "$is_kova_managed" = "true" ]; then
+        rm -f "$proj_dir/.claude/settings.json"
+        echo -e "  ${RED}✗${RESET} Removed generated settings.json"
+      else
+        echo -e "  ${RED}✗${RESET} Removed Kova hooks from settings.json"
+      fi
+    fi
+  fi
+
+  # Clean up loop state
+  if [ -d "$proj_dir/.kova-loop" ]; then
+    rm -rf "$proj_dir/.kova-loop"
+    echo -e "  ${RED}✗${RESET} Removed .kova-loop/ state directory"
+  fi
+
+  echo ""
+  echo "═══════════════════════════════════════"
+  echo "  Kova uninstalled from $proj_dir"
+  echo ""
+  echo "  Files NOT removed (manual review):"
+  echo "    CLAUDE.md / CLAUDE.kova.md"
+  echo "    .claude/settings.json (restored from backup if available)"
+  echo "═══════════════════════════════════════"
+  echo ""
+}
+
+# ─────────────────────────────────────────────
 # kova monitor (delegates to kova-monitor)
 # ─────────────────────────────────────────────
 cmd_monitor() {
@@ -477,6 +667,9 @@ case "${1:-}" in
     shift
     cmd_monitor "$@"
     ;;
+  uninstall)
+    cmd_uninstall
+    ;;
   *)
     echo -e "${RED}Unknown command: $1${RESET}"
     echo ""
@@ -488,6 +681,7 @@ case "${1:-}" in
     echo "  activate    Turn ON hooks"
     echo "  deactivate  Turn OFF hooks"
     echo "  install     Install into project"
+    echo "  uninstall   Remove Kova from project"
     echo "  setup       Interactive setup wizard"
     echo "  monitor     tmux dashboard"
     echo ""

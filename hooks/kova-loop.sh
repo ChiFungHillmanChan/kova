@@ -156,6 +156,26 @@ _maybe_escalate_to_codex() {
   fi
 }
 
+# Acquire an exclusive lock so only one loop runs per project.
+# Uses mkdir (atomic on all POSIX systems) since flock is not portable to macOS.
+_acquire_loop_lock() {
+  LOCK_DIR="${STATE_DIR}/.kova-loop.lock"
+  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    local stale_pid=""
+    [ -f "$LOCK_DIR/pid" ] && stale_pid=$(cat "$LOCK_DIR/pid" 2>/dev/null)
+    if [ -n "$stale_pid" ] && kill -0 "$stale_pid" 2>/dev/null; then
+      echo "ERROR: Another Kova loop is already running in this project (PID $stale_pid)." >&2
+      exit 1
+    fi
+    # Stale lock from a crashed process — reclaim it
+    rm -rf "$LOCK_DIR"
+    mkdir "$LOCK_DIR" 2>/dev/null || { echo "ERROR: Cannot acquire loop lock." >&2; exit 1; }
+  fi
+  echo $$ > "$LOCK_DIR/pid"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$LOCK_DIR'" EXIT
+}
+
 main() {
   parse_args "$@"
   detect_pm; detect_languages
@@ -173,6 +193,7 @@ main() {
   if $DRY_RUN; then echo "DRY RUN — no changes will be made." >&2; exit 0; fi
 
   mkdir -p "$STATE_DIR"; : > "$STATE_DIR/ITERATION_LOG.md"
+  _acquire_loop_lock
   rate_limit_init "$STATE_DIR"
 
   local completed_context=""

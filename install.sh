@@ -167,8 +167,9 @@ mkdir -p "$TARGET_DIR/.claude/hooks/lib"
 # which work for the repo itself (plugin development) but NOT for legacy installs
 # where hooks live at .claude/hooks/. We generate the correct settings inline.
 if [ -f "$TARGET_DIR/.claude/settings.json" ]; then
-  echo "  .claude/settings.json already exists. Backing up to settings.json.bak"
-  cp "$TARGET_DIR/.claude/settings.json" "$TARGET_DIR/.claude/settings.json.bak"
+  _bak_name="settings.json.bak.$(date +%Y%m%d%H%M%S)"
+  echo "  .claude/settings.json already exists. Backing up to $_bak_name"
+  cp "$TARGET_DIR/.claude/settings.json" "$TARGET_DIR/.claude/$_bak_name"
 fi
 cat > "$TARGET_DIR/.claude/settings.json" <<'SETTINGS'
 {
@@ -387,9 +388,11 @@ install_statusline() {
   fi
 
   if [ -f "$statusline_script" ]; then
-    # Backup existing script
-    cp "$statusline_script" "$statusline_script.bak"
-    echo "  Statusline: backed up existing to statusline-command.sh.bak"
+    # Backup existing script with timestamp
+    local _sl_ts
+    _sl_ts="$(date +%Y%m%d%H%M%S)"
+    cp "$statusline_script" "$statusline_script.bak.$_sl_ts"
+    echo "  Statusline: backed up existing to statusline-command.sh.bak.$_sl_ts"
 
     # Inject kova indicator by appending a block at the end of the existing script.
     # We append rather than splicing into the last line to avoid corrupting

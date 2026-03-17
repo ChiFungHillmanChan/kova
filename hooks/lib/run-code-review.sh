@@ -94,8 +94,11 @@ $diff_content"
 
   # Optional: Cross-model review via Codex
   if type codex_available &>/dev/null && codex_available; then
-    local codex_diff="/tmp/.kova-review-diff-$$.txt"
-    local codex_rev="/tmp/.kova-codex-review-$$.md"
+    local _review_tmp="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/kova-review-$$"
+    mkdir -p "$_review_tmp" 2>/dev/null
+    chmod 700 "$_review_tmp" 2>/dev/null
+    local codex_diff="$_review_tmp/diff.txt"
+    local codex_rev="$_review_tmp/codex-review.md"
     echo "$diff_content" > "$codex_diff"
     if codex_review "$codex_diff" "$codex_rev"; then
       echo "" >> "$output_file"
@@ -106,7 +109,7 @@ $diff_content"
         REVIEW_RESULT="HIGH"
       fi
     fi
-    rm -f "$codex_diff" "$codex_rev"
+    rm -rf "$_review_tmp"
   fi
 
   return 0

@@ -35,21 +35,30 @@ That's it — no cloning, no scripts. Commands and skills are available immediat
 ### Option B: Legacy Install (clone + install.sh)
 
 ```bash
-# 1) Clone once
+# Clone Kova
 git clone https://github.com/ChiFungHillmanChan/kova.git ~/kova
 
-# 2) Install into any project
+# Go to your project
 cd /path/to/your/project
-bash ~/kova/install.sh --dry-run   # preview first
+
+# Preview what will be installed
+bash ~/kova/install.sh --dry-run
+
+# Install Kova into this project
 bash ~/kova/install.sh
-kova activate
 ```
 
 Optional global CLI:
 
 ```bash
+# Install global CLI
 bash ~/kova/install.sh --global
-kova setup
+
+# Activate hooks for this project
+kova activate
+
+# Verify setup
+kova status
 ```
 
 ### Two Plugins

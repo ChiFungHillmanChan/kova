@@ -62,12 +62,26 @@ No cloning, no scripts. Everything is available immediately after install.
 ### Option B: Legacy Install (clone + install.sh)
 
 ```bash
-# From your project directory:
-cd /path/to/your/project
-bash /path/to/kova/install.sh
+# Clone Kova
+git clone https://github.com/ChiFungHillmanChan/kova.git ~/kova
 
-# Preview without installing:
-bash /path/to/kova/install.sh --dry-run
+# Go to your project
+cd /path/to/your/project
+
+# Preview what will be installed
+bash ~/kova/install.sh --dry-run
+
+# Install Kova into this project
+bash ~/kova/install.sh
+
+# Optional: install global CLI
+bash ~/kova/install.sh --global
+
+# Activate hooks for this project
+kova activate
+
+# Verify setup
+kova status
 ```
 
 What the installer does:

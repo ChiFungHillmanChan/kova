@@ -92,8 +92,11 @@ teardown() {
   mkdir -p "$SANDBOX/.claude"
   echo '{"custom": true}' > "$SANDBOX/.claude/settings.json"
   run_install "$SANDBOX"
-  [ -f "$SANDBOX/.claude/settings.json.bak" ]
-  run jq '.custom' "$SANDBOX/.claude/settings.json.bak"
+  # Backup now uses a timestamp suffix (settings.json.bak.YYYYMMDDHHMMSS)
+  local bak_file
+  bak_file=$(ls "$SANDBOX/.claude/settings.json.bak."* 2>/dev/null | head -1)
+  [ -n "$bak_file" ]
+  run jq '.custom' "$bak_file"
   assert_output "true"
 }
 
@@ -145,5 +148,8 @@ teardown() {
   run_install "$SANDBOX"
   run_install "$SANDBOX"
   [ -f "$SANDBOX/.claude/hooks/format.sh" ]
-  [ -f "$SANDBOX/.claude/settings.json.bak" ]
+  # Backup now uses a timestamp suffix
+  local bak_file
+  bak_file=$(ls "$SANDBOX/.claude/settings.json.bak."* 2>/dev/null | head -1)
+  [ -n "$bak_file" ]
 }
