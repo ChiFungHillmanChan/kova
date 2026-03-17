@@ -52,25 +52,3 @@ jobs:
       - name: Run regression tests
         run: npx bats --tap tests/regression 2>&1 | tee regression.tap
 
-      - name: Count passing tests
-        if: success() && matrix.os == 'ubuntu-latest'
-        id: test-count
-        run: |
-          total=$(grep -c '^ok ' unit.tap integration.tap regression.tap || true)
-          echo "total=$total" >> "$GITHUB_OUTPUT"
-
-      # Badge setup:
-      #   1. Create a public Gist (any filename) at https://gist.github.com
-      #   2. Add repo secret GIST_SECRET with a PAT that has "gist" scope
-      #   3. Add repo variable BADGE_GIST_ID with the Gist ID (from the URL)
-      #   4. Replace BADGE_GIST_ID in README.md badge URL with the real Gist ID
-      - name: Update test badge
-        if: success() && matrix.os == 'ubuntu-latest' && github.ref == 'refs/heads/main'
-        uses: schneegans/dynamic-badges-action@v1.7.0
-        with:
-          auth: ${{ secrets.GIST_SECRET }}
-          gistID: ${{ vars.BADGE_GIST_ID }}
-          filename: kova-test-badge.json
-          label: Tests
-          message: "${{ steps.test-count.outputs.total }} passing"
-          color: brightgreen

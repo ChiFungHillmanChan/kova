@@ -8,8 +8,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.gnu.org/software/bash/"><img src="https://img.shields.io/badge/Shell-Bash-green.svg" alt="Shell"></a>
   <a href="https://docs.anthropic.com/en/docs/claude-code"><img src="https://img.shields.io/badge/Claude_Code-Compatible-blueviolet.svg" alt="Claude Code"></a>
-  <!-- SETUP: Replace BADGE_GIST_ID with your actual Gist ID, see .github/workflows/ci.yml -->
-  <a href="#testing"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2FChiFungHillmanChan%2FBADGE_GIST_ID%2Fraw%2Fkova-test-badge.json" alt="Tests"></a>
+  <a href="https://github.com/ChiFungHillmanChan/kova/actions/workflows/ci.yml"><img src="https://github.com/ChiFungHillmanChan/kova/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://docs.anthropic.com/en/docs/claude-code"><img src="https://img.shields.io/badge/Claude_Code-Plugin-blueviolet.svg" alt="Plugin"></a>
   <a href="#documentation"><img src="https://img.shields.io/badge/Docs-EN%20%7C%20%E7%B2%B5%E8%AA%9E%20%7C%20%E4%B8%AD%E6%96%87-orange.svg" alt="Languages"></a>
 </p>
