@@ -232,5 +232,8 @@ project_hash() {
 # Read a JSON field from package.json
 # Usage: pkg_field '.scripts.build'
 pkg_field() {
+  if ! command -v jq &>/dev/null; then
+    return
+  fi
   jq -r "$1 // empty" package.json 2>/dev/null
 }

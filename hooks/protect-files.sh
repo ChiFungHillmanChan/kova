@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # protect-files.sh — Block writes to sensitive files
 # Runs on PreToolUse for Write|Edit|MultiEdit
 #
@@ -8,8 +9,16 @@
 #   - PROTECTED_SUBSTRING: substring match on full path — for patterns that can appear
 #     anywhere in a file path
 
+_HOOK_DIR="$(dirname "$0")"
+source "$_HOOK_DIR/lib/require-jq.sh"
+
+if ! require_jq; then
+  echo '{"decision":"block","reason":"KOVA: jq is not installed. Cannot verify file safety. Install jq to proceed."}'
+  exit 0
+fi
+
 INPUT=$(cat)
-FILE=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
+FILE=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)
 
 if [ -z "$FILE" ]; then
   exit 0

@@ -69,4 +69,5 @@ installed_lib_files() {
   echo "kova-verify.sh"
   echo "kova-safe-commit.sh"
   echo "kova-cleanup.sh"
+  echo "require-jq.sh"
 }

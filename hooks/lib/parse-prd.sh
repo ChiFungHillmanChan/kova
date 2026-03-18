@@ -70,6 +70,11 @@ parse_markdown_prd() {
 parse_json_prd() {
   local file="$1"
 
+  if ! command -v jq &>/dev/null; then
+    echo "ERROR: jq is required for JSON PRD parsing but not installed." >&2
+    return 1
+  fi
+
   PRD_ITEMS=()
   PRD_COMPLETED=()
   PRD_COMPLETED_COUNT=0

@@ -1,11 +1,20 @@
 #!/bin/bash
+set -euo pipefail
 # kova-commit-gate.sh — PreToolUse hook for Bash(git commit*)
 # Blocks git commit if kova loop is active and verification gate hasn't passed.
 # Safety net: even if Claude tries to commit during a loop iteration,
 # this hook ensures verification ran first.
 
+_HOOK_DIR="$(dirname "$0")"
+source "$_HOOK_DIR/lib/require-jq.sh"
+
+if ! require_jq; then
+  echo '{"decision":"block","reason":"KOVA: jq is not installed. Cannot verify commit safety. Install jq to proceed."}'
+  exit 0
+fi
+
 INPUT=$(cat)
-TOOL_INPUT=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null)
+TOOL_INPUT=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null || true)
 
 # Only gate git commit commands
 case "$TOOL_INPUT" in

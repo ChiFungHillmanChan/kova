@@ -119,3 +119,21 @@ run_hook() {
   assert_success
   refute_output --partial '"decision":"block"'
 }
+
+# ─── jq missing: fail-closed ───
+
+@test "protect-files: blocks when jq is not installed (fail-closed)" {
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  cp -r "$KOVA_ROOT/hooks/"* "$tmpdir/"
+  cat > "$tmpdir/lib/require-jq.sh" << 'MOCK'
+require_jq() {
+  echo "KOVA ERROR: jq is required but not installed. Hook cannot run safely." >&2
+  return 1
+}
+MOCK
+  run bash -c 'echo "{\"tool_input\":{\"file_path\":\".env\"}}" | bash "$1/protect-files.sh"' _ "$tmpdir"
+  rm -rf "$tmpdir"
+  assert_output --partial '"decision":"block"'
+  assert_output --partial 'jq is not installed'
+}

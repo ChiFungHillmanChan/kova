@@ -2,6 +2,13 @@
 # format.sh — Auto-format any file Claude writes or edits
 # Runs after PostToolUse for Write|Edit|MultiEdit
 
+_HOOK_DIR="$(dirname "$0")"
+source "$_HOOK_DIR/lib/require-jq.sh"
+
+if ! require_jq; then
+  exit 0
+fi
+
 INPUT=$(cat)
 FILE=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 

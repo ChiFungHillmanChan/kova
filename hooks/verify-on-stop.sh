@@ -8,8 +8,14 @@ _HOOK_DIR="$(dirname "$0")"
 _LIB_DIR="$_HOOK_DIR/lib"
 # Fallback for when invoked with CLAUDE_PLUGIN_ROOT (plugin mode)
 [ -d "$_LIB_DIR" ] || _LIB_DIR="${CLAUDE_PLUGIN_ROOT:-$_HOOK_DIR}/hooks/lib"
+source "$_LIB_DIR/require-jq.sh"
 source "$_LIB_DIR/detect-stack.sh"
 source "$_LIB_DIR/codex-assist.sh"
+
+if ! require_jq; then
+  echo "KOVA WARNING: jq not installed. Stop gate skipped." >&2
+  exit 0
+fi
 
 INPUT=$(cat)
 STOP_ACTIVE=$(echo "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null)

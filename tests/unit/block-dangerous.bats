@@ -200,3 +200,55 @@ run_hook_stderr() {
   run run_hook "rm -rf ./build"
   refute_output --partial '"decision":"block"'
 }
+
+# ─── Encoding / pipeline bypass attempts ───
+
+@test "block-dangerous: blocks base64 decode piped to bash" {
+  run run_hook "echo cm0gLXJmIC8K | base64 -d | bash"
+  assert_output --partial '"decision":"block"'
+}
+
+@test "block-dangerous: blocks base64 --decode piped to sh" {
+  run run_hook "echo payload | base64 --decode | sh"
+  assert_output --partial '"decision":"block"'
+}
+
+@test "block-dangerous: blocks heredoc piped to bash" {
+  run run_hook 'cat <<EOF | bash'
+  assert_output --partial '"decision":"block"'
+}
+
+@test "block-dangerous: blocks heredoc piped to sh" {
+  run run_hook 'cat <<ENDSCRIPT | sh'
+  assert_output --partial '"decision":"block"'
+}
+
+@test "block-dangerous: allows safe base64 usage (no pipe to shell)" {
+  run run_hook "echo data | base64 -d > output.bin"
+  assert_success
+  refute_output --partial '"decision":"block"'
+}
+
+@test "block-dangerous: allows safe base64 encode" {
+  run run_hook "cat file.txt | base64"
+  assert_success
+  refute_output --partial '"decision":"block"'
+}
+
+# ─── jq missing: fail-closed ───
+
+@test "block-dangerous: blocks when jq is not installed (fail-closed)" {
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  cp -r "$KOVA_ROOT/hooks/"* "$tmpdir/"
+  cat > "$tmpdir/lib/require-jq.sh" << 'MOCK'
+require_jq() {
+  echo "KOVA ERROR: jq is required but not installed. Hook cannot run safely." >&2
+  return 1
+}
+MOCK
+  run bash -c 'echo "{\"tool_input\":{\"command\":\"ls -la\"}}" | bash "$1/block-dangerous.sh"' _ "$tmpdir"
+  rm -rf "$tmpdir"
+  assert_output --partial '"decision":"block"'
+  assert_output --partial 'jq is not installed'
+}

@@ -1,9 +1,18 @@
 #!/bin/bash
+set -euo pipefail
 # block-dangerous.sh — Block catastrophic commands before Claude runs them
 # Runs on PreToolUse for Bash
 
+_HOOK_DIR="$(dirname "$0")"
+source "$_HOOK_DIR/lib/require-jq.sh"
+
+if ! require_jq; then
+  echo '{"decision":"block","reason":"KOVA: jq is not installed. Cannot verify command safety. Install jq to proceed."}'
+  exit 0
+fi
+
 INPUT=$(cat)
-CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
+CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
 
 if [ -z "$CMD" ]; then
   exit 0
@@ -17,6 +26,8 @@ normalize_cmd() {
   # Remove backslash escapes (e.g. r\m -> rm). Use | delimiter to avoid
   # ambiguity with / in sed — s/\\//g would also strip forward slashes.
   c=$(printf '%s' "$c" | sed 's|\\||g')
+  # Strip non-ASCII and non-printable bytes (zero-width chars, BOM, homoglyphs, etc.)
+  c=$(printf '%s' "$c" | LC_ALL=C sed 's/[^[:print:][:space:]]//g')
   # Remove single and double quotes
   c=$(printf '%s' "$c" | tr -d "\"'")
   # Collapse runs of whitespace into a single space
@@ -77,6 +88,26 @@ _check_blocked() {
   return 1
 }
 
+# Block dangerous pipeline patterns that encode/obfuscate payloads:
+#   base64 -d | bash, base64 --decode | sh, heredoc | bash, etc.
+# We block the delivery mechanism itself rather than trying to decode payloads.
+_check_pipeline_bypass() {
+  local text="$1"
+  if printf '%s' "$text" | grep -qiE 'base64\s+(-d|--decode).*[|]\s*(ba)?sh'; then
+    printf 'base64 decode piped to shell'
+    return 0
+  fi
+  if printf '%s' "$text" | grep -qiE '[|]\s*base64\s+(-d|--decode)\s*[|]\s*(ba)?sh'; then
+    printf 'base64 decode piped to shell'
+    return 0
+  fi
+  if printf '%s' "$text" | grep -qiE '<<.*[|]\s*(ba)?sh'; then
+    printf 'heredoc piped to shell'
+    return 0
+  fi
+  return 1
+}
+
 # Also block commands containing $() or backtick substitutions that embed
 # dangerous patterns (e.g.  $(rm -rf /)  or  `rm -rf /` ).
 _check_subshell() {
@@ -103,6 +134,9 @@ matched=$(_check_blocked "$NORM_CMD") ||
 # Check for dangerous subshell substitutions
 matched=$(_check_subshell "$CMD") ||
 matched=$(_check_subshell "$NORM_CMD") ||
+# Check for encoding/pipeline bypass patterns (base64|bash, heredoc|bash)
+matched=$(_check_pipeline_bypass "$CMD") ||
+matched=$(_check_pipeline_bypass "$NORM_CMD") ||
 true
 
 if [ -n "$matched" ]; then

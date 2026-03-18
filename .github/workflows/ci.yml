@@ -52,3 +52,26 @@ jobs:
       - name: Run regression tests
         run: npx bats --tap tests/regression 2>&1 | tee regression.tap
 
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: |
+            unit.tap
+            integration.tap
+            regression.tap
+
+      - name: Test Summary
+        if: failure()
+        run: |
+          echo "## Test Results (${{ matrix.os }})" >> "$GITHUB_STEP_SUMMARY"
+          for f in unit.tap integration.tap regression.tap; do
+            if [ -f "$f" ]; then
+              echo "### $(basename "$f" .tap)" >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+              tail -20 "$f" >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
