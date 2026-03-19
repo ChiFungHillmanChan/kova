@@ -1,7 +1,7 @@
 # Kavex
 
 <p align="center">
-  <img src="assets/kavex-hero.png" alt="Kavex — Autonomous Engineering Protocol" width="100%" />
+  <img src="assets/kavex-hero.png" alt="Kavex — Safety Guardrails for AI Coding Agents" width="100%" />
 </p>
 
 <p align="center">
@@ -13,11 +13,20 @@
   <a href="#documentation"><img src="https://img.shields.io/badge/Docs-EN%20%7C%20%E7%B2%B5%E8%AA%9E%20%7C%20%E4%B8%AD%E6%96%87-orange.svg" alt="Languages"></a>
 </p>
 
+<h3 align="center">Safety guardrails for AI coding agents.<br/>Block dangerous commands. Verify every change. Ship with confidence.</h3>
+
 <p align="center">
-  <strong>Autonomous engineering protocol for Claude Code: safe by default, verified before stop, and built to ship.</strong>
+  <em>Your AI agent tried <code>rm -rf /</code> to "clean build artifacts." Kavex blocked it. You didn't even notice.</em>
 </p>
 
-**Kavex** drops into any project and turns Claude Code from "assistant that asks" into "engineering system that executes, verifies, and self-corrects."
+<!-- TODO: Replace with actual gif after running: vhs demo/demo.tape -->
+<p align="center">
+  <img src="demo/kavex-demo.gif" alt="Kavex Demo — blocking dangerous commands and running verification" width="80%" />
+</p>
+
+**Kavex** is an open-source safety layer that sits between AI coding agents and your system. It blocks catastrophic commands, protects secrets, and verifies every code change — so you can let AI work autonomously without babysitting.
+
+> **"You don't trust AI. You instrument it."** — Claude is the worker. Bash is the boss.
 
 ---
 
@@ -102,17 +111,30 @@ Choose `kavex` if you want the workflow without enforcement. Choose `kavex-full`
 
 ---
 
-## Why Kavex
+## The Problem
+
+AI coding agents are powerful enough to write production code — and powerful enough to destroy production systems. Most setups have **zero guardrails** between "AI suggests command" and "command executes."
+
+| Without Kavex | With Kavex |
+|---------------|------------|
+| AI runs `rm -rf /` to "clean artifacts" | **Blocked** before execution |
+| AI edits `.env.production` "helpfully" | **Denied** — secrets protected |
+| AI writes code with type errors, says "done" | **Caught** — lint + typecheck on every stop |
+| AI loops forever trying random fixes | **Circuit breaker** kills it, writes report |
+| You babysit every AI action | You review results, not process |
 
 <p align="center">
   <img src="assets/kavex-comparison.png" alt="Without Kavex vs With Kavex" width="100%" />
 </p>
 
-- **Safe by default** — blocks dangerous commands (`rm -rf /`, `DROP TABLE`, force push) and protects secrets
-- **Verified before stop** — fast stop gate (lint + typecheck) catches errors on every stop; full 7-layer verification runs in the Team Loop
-- **Autonomous but bounded** — retry, rate limiting, and circuit breaker prevent runaway loops
-- **Multi-model review** — Claude agents + optional OpenAI Codex cross-model review
-- **Works across stacks** — Node.js, Python, Go, Rust, Ruby, Java, .NET (auto-detected)
+## Why Kavex
+
+- **Blocks before execution** — `rm -rf /`, `DROP TABLE`, `git push --force`, eval/base64 obfuscation — all caught
+- **Protects secrets** — `.env`, `.pem`, credentials, API keys — AI can't touch them
+- **Verifies every change** — 7-layer gate: build, test, lint, typecheck, security
+- **Self-corrects** — failures trigger diagnostic + retry; 3 failures spawn a fresh self-healing session
+- **Circuit breaker** — detects stuck loops, kills them, writes actionable reports
+- **Works across 7 stacks** — Node.js, Python, Go, Rust, Ruby, Java, .NET (auto-detected)
 
 ---
 

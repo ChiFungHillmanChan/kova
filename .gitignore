@@ -35,3 +35,6 @@ vendor/
 
 # Build output
 dist/
+
+# Demo (marketing assets, not part of the plugin)
+demo/
