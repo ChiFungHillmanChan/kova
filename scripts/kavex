@@ -69,6 +69,7 @@ KAVEX_LIB_FILES=(
   kavex-verify.sh
   kavex-safe-commit.sh
   kavex-cleanup.sh
+  kavex-config.sh
 )
 
 readonly KAVEX_HOOK_COMMANDS_JSON='[
@@ -160,6 +161,9 @@ cmd_help() {
   kavex uninstall     Remove Kavex from current project
   kavex setup         Interactive setup wizard
   kavex monitor       tmux dashboard (delegates to kavex-monitor)
+  kavex config        Manage configuration
+  kavex config --dangerously-skip-safety [on|off]
+                      Disable/enable safety hooks (like claude --dangerously-skip-permissions)
 
  SLASH COMMANDS (use inside Claude Code)
  ─────────────────────────────────────────────
@@ -311,6 +315,20 @@ cmd_status() {
     echo -e "  Codex CLI:       ${GREEN}installed${RESET} (multi-model review enabled)"
   else
     echo -e "  Codex CLI:       ${DIM}not installed (optional)${RESET}"
+  fi
+
+  # Check safety skip status
+  local config_file="${XDG_CONFIG_HOME:-$HOME/.config}/kavex/config.json"
+  local skip_safety="false"
+  if [ "${KAVEX_SKIP_SAFETY:-0}" = "1" ]; then
+    skip_safety="true"
+  elif [ -f "$config_file" ] && command -v jq &>/dev/null; then
+    skip_safety=$(jq -r '.skip_safety // "false"' "$config_file" 2>/dev/null)
+  fi
+  if [ "$skip_safety" = "true" ]; then
+    echo -e "  Safety:          ${RED}DISABLED${RESET} (kavex config --dangerously-skip-safety off to re-enable)"
+  else
+    echo -e "  Safety:          ${GREEN}active${RESET}"
   fi
 
   # Check jq
@@ -641,6 +659,127 @@ cmd_monitor() {
 }
 
 # ─────────────────────────────────────────────
+# kavex config
+# ─────────────────────────────────────────────
+KAVEX_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/kavex"
+KAVEX_CONFIG_FILE="$KAVEX_CONFIG_DIR/config.json"
+
+_ensure_config() {
+  if [ ! -f "$KAVEX_CONFIG_FILE" ]; then
+    mkdir -p "$KAVEX_CONFIG_DIR"
+    echo '{}' > "$KAVEX_CONFIG_FILE"
+  fi
+}
+
+_get_config() {
+  local key="$1"
+  local default="${2:-}"
+  _ensure_config
+  local val
+  val=$(jq -r ".$key // empty" "$KAVEX_CONFIG_FILE" 2>/dev/null)
+  echo "${val:-$default}"
+}
+
+_set_config() {
+  local key="$1" val="$2"
+  _ensure_config
+  local updated
+  updated=$(jq --arg v "$val" ".$key = \$v" "$KAVEX_CONFIG_FILE")
+  printf '%s\n' "$updated" > "$KAVEX_CONFIG_FILE"
+}
+
+cmd_config() {
+  if ! command -v jq &>/dev/null; then
+    echo -e "${RED}Error: jq is required. Install: brew install jq${RESET}"
+    exit 1
+  fi
+
+  local subcmd="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$subcmd" in
+    --dangerously-skip-safety)
+      local action="${1:-}"
+      case "$action" in
+        on|true|1)
+          _set_config "skip_safety" "true"
+          echo ""
+          echo -e "${RED}${BOLD}  WARNING: Safety hooks disabled.${RESET}"
+          echo -e "${RED}  ─────────────────────────────────────────────${RESET}"
+          echo -e "  block-dangerous.sh   ${RED}DISABLED${RESET}"
+          echo -e "  protect-files.sh     ${RED}DISABLED${RESET}"
+          echo -e "  kavex-commit-gate.sh ${RED}DISABLED${RESET}"
+          echo ""
+          echo -e "  Kavex will ${RED}NOT${RESET} block dangerous commands or"
+          echo -e "  protect sensitive files until you re-enable safety."
+          echo ""
+          echo -e "  Re-enable: ${CYAN}kavex config --dangerously-skip-safety off${RESET}"
+          echo ""
+          echo -e "  ${YELLOW}To apply: restart your Claude Code session.${RESET}"
+          echo ""
+          ;;
+        off|false|0)
+          _set_config "skip_safety" "false"
+          echo ""
+          echo -e "${GREEN}${BOLD}  Safety hooks re-enabled.${RESET}"
+          echo -e "  ─────────────────────────────────────────────"
+          echo -e "  block-dangerous.sh   ${GREEN}ACTIVE${RESET}"
+          echo -e "  protect-files.sh     ${GREEN}ACTIVE${RESET}"
+          echo -e "  kavex-commit-gate.sh ${GREEN}ACTIVE${RESET}"
+          echo ""
+          echo -e "  ${YELLOW}To apply: restart your Claude Code session.${RESET}"
+          echo ""
+          ;;
+        "")
+          local current
+          current=$(_get_config "skip_safety" "false")
+          if [ "$current" = "true" ]; then
+            echo -e "  skip_safety: ${RED}true${RESET} (safety hooks disabled)"
+          else
+            echo -e "  skip_safety: ${GREEN}false${RESET} (safety hooks active)"
+          fi
+          ;;
+        *)
+          echo -e "${RED}Usage: kavex config --dangerously-skip-safety [on|off]${RESET}"
+          exit 1
+          ;;
+      esac
+      ;;
+    ""|--show)
+      _ensure_config
+      echo ""
+      echo -e "${BOLD}KAVEX CONFIG${RESET}"
+      echo "═══════════════════════════════════════"
+      echo -e "  Config file: ${DIM}$KAVEX_CONFIG_FILE${RESET}"
+      echo ""
+
+      local skip_safety
+      skip_safety=$(_get_config "skip_safety" "false")
+      if [ "$skip_safety" = "true" ]; then
+        echo -e "  skip_safety:  ${RED}true${RESET} (safety hooks disabled)"
+      else
+        echo -e "  skip_safety:  ${GREEN}false${RESET} (safety hooks active)"
+      fi
+
+      echo ""
+      echo "═══════════════════════════════════════"
+      echo ""
+      echo "  Available config options:"
+      echo "    kavex config --dangerously-skip-safety [on|off]"
+      echo ""
+      ;;
+    *)
+      echo -e "${RED}Unknown config option: $subcmd${RESET}"
+      echo ""
+      echo "  Available config options:"
+      echo "    kavex config --dangerously-skip-safety [on|off]"
+      echo ""
+      exit 1
+      ;;
+  esac
+}
+
+# ─────────────────────────────────────────────
 # Main dispatch
 # ─────────────────────────────────────────────
 case "${1:-}" in
@@ -670,6 +809,10 @@ case "${1:-}" in
   uninstall)
     cmd_uninstall
     ;;
+  config)
+    shift
+    cmd_config "$@"
+    ;;
   *)
     echo -e "${RED}Unknown command: $1${RESET}"
     echo ""
@@ -684,6 +827,7 @@ case "${1:-}" in
     echo "  uninstall   Remove Kavex from project"
     echo "  setup       Interactive setup wizard"
     echo "  monitor     tmux dashboard"
+    echo "  config      Manage Kavex configuration"
     echo ""
     echo "For LLM-powered commands, use Claude Code:"
     echo "  /kavex:init [name]   Scaffold a PRD"

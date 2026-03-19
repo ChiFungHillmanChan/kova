@@ -6,7 +6,14 @@ set -euo pipefail
 # this hook ensures verification ran first.
 
 _HOOK_DIR="$(dirname "$0")"
+[ -d "$_HOOK_DIR/lib" ] || _HOOK_DIR="${CLAUDE_PLUGIN_ROOT:-$_HOOK_DIR}/hooks"
 source "$_HOOK_DIR/lib/require-jq.sh"
+source "$_HOOK_DIR/lib/kavex-config.sh"
+
+# Skip safety when explicitly opted out (kavex config --dangerously-skip-safety)
+if kavex_skip_safety; then
+  exit 0
+fi
 
 if ! require_jq; then
   echo '{"decision":"block","reason":"KAVEX: jq is not installed. Cannot verify commit safety. Install jq to proceed."}'

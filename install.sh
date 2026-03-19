@@ -123,6 +123,7 @@ if $DRY_RUN; then
   echo "  hooks/lib/kavex-verify.sh"
   echo "  hooks/lib/kavex-safe-commit.sh"
   echo "  hooks/lib/kavex-cleanup.sh"
+  echo "  hooks/lib/kavex-config.sh"
   echo "  hooks/lib/require-jq.sh"
   echo "  kavex-monitor (CLI script → .claude/kavex-monitor)"
   echo "  commands/commit-push-pr.md"
@@ -308,6 +309,7 @@ cp "$SCRIPT_DIR/hooks/lib/kavex-snapshot.sh"   "$TARGET_DIR/.claude/hooks/lib/"
 cp "$SCRIPT_DIR/hooks/lib/kavex-verify.sh"     "$TARGET_DIR/.claude/hooks/lib/"
 cp "$SCRIPT_DIR/hooks/lib/kavex-safe-commit.sh" "$TARGET_DIR/.claude/hooks/lib/"
 cp "$SCRIPT_DIR/hooks/lib/kavex-cleanup.sh"    "$TARGET_DIR/.claude/hooks/lib/"
+cp "$SCRIPT_DIR/hooks/lib/kavex-config.sh"    "$TARGET_DIR/.claude/hooks/lib/"
 
 # Make hooks executable
 chmod +x "$TARGET_DIR/.claude/hooks/"*.sh
