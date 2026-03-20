@@ -361,34 +361,46 @@ cmd_activate() {
     fi
   fi
 
-  # Define hooks config — references scripts installed by install.sh into .claude/hooks/
-  # Legacy install path; plugin mode uses hooks/hooks.json instead
+  # Detect hook path prefix:
+  # - Kavex source repo: hooks live at $PROJECT_ROOT/hooks/ -> use "$CLAUDE_PROJECT_DIR"/hooks/
+  # - Installed project: hooks live at $PROJECT_ROOT/.claude/hooks/ -> use .claude/hooks/
+  local hook_prefix
+  if [ -f "$PROJECT_ROOT/hooks/format.sh" ] && [ -f "$PROJECT_ROOT/hooks/block-dangerous.sh" ]; then
+    # We're inside the Kavex source repo — use $CLAUDE_PROJECT_DIR paths
+    # Escaped quotes for JSON embedding
+    hook_prefix='\"$CLAUDE_PROJECT_DIR\"/hooks'
+  else
+    # Legacy install — hooks copied into .claude/hooks/
+    hook_prefix='.claude/hooks'
+  fi
+
+  # Define hooks config using detected path prefix
   local hooks_json
-  hooks_json=$(cat <<'HOOKS'
+  hooks_json=$(cat <<HOOKS
 {
   "PreToolUse": [
     {
       "matcher": "Bash",
       "hooks": [
-        {"type": "command", "command": "cat | .claude/hooks/block-dangerous.sh", "timeout": 5},
-        {"type": "command", "command": "cat | .claude/hooks/kavex-commit-gate.sh", "timeout": 5}
+        {"type": "command", "command": "cat | ${hook_prefix}/block-dangerous.sh", "timeout": 5},
+        {"type": "command", "command": "cat | ${hook_prefix}/kavex-commit-gate.sh", "timeout": 5}
       ]
     },
     {
       "matcher": "Write|Edit|MultiEdit",
-      "hooks": [{"type": "command", "command": "cat | .claude/hooks/protect-files.sh", "timeout": 5}]
+      "hooks": [{"type": "command", "command": "cat | ${hook_prefix}/protect-files.sh", "timeout": 5}]
     }
   ],
   "PostToolUse": [
     {
       "matcher": "Write|Edit|MultiEdit",
-      "hooks": [{"type": "command", "command": "cat | .claude/hooks/format.sh", "timeout": 30}]
+      "hooks": [{"type": "command", "command": "cat | ${hook_prefix}/format.sh", "timeout": 30}]
     }
   ],
   "Stop": [
     {
       "matcher": "",
-      "hooks": [{"type": "command", "command": "cat | .claude/hooks/verify-on-stop.sh", "timeout": 60}]
+      "hooks": [{"type": "command", "command": "cat | ${hook_prefix}/verify-on-stop.sh", "timeout": 60}]
     }
   ]
 }
